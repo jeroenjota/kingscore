@@ -39,7 +39,10 @@ Iedere telefoon met dezelfde `game` ziet dezelfde stand.
 	- `npm run dev -- --host`
 
 Standaard zoekt Kingscore de API nu op `http://<zelfde-host>:54321`.
-Wil je een andere URL gebruiken, zet dan `VITE_SYNC_API_URL` in een `.env` bestand in de projectroot.
+Wil je een andere URL gebruiken, zet `VITE_SYNC_API_URL` in een `.env` bestand in de projectroot.
+
+Voor verwijderen van spelers en opgeslagen spellen is een beheerderscode nodig.
+Zet die in de backend (`../api/.env`) als `KINGEN_DELETE_ADMIN_CODE`.
 
 ## Wat zit er in deze eerste versie?
 

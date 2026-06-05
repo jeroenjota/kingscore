@@ -84,6 +84,8 @@ function detectInitialGameId() {
 
 const STORAGE_KEY = `kingscore-state-v1:${detectInitialGameId()}`;
 const LOBBY_PLAYERS_KEY = "kingscore-lobby-players-v1";
+const LOBBY_ADMIN_CODE_KEY = "kingscore-lobby-admin-code-v1";
+const LOBBY_ADMIN_CODE_TTL_MS = 2 * 60 * 60 * 1000;
 const SYNC_POLL_INTERVAL_MS = 1500;
 
 function createPlayerId() {
@@ -266,6 +268,7 @@ const lobbyHostLocked = ref(false);
 const lobbyHostCheckLoading = ref(false);
 const lobbyNewPlayerName = ref("");
 const lobbyDeletePlayerName = ref("");
+const lobbyAdminCode = ref("");
 const lobbyPlayerMessage = ref("");
 const lobbyPlayerError = ref("");
 const lobbyDeletePlayerMessage = ref("");
@@ -479,6 +482,63 @@ function persistLobbyPlayers() {
   }
 }
 
+function clearPersistedLobbyAdminCode() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.sessionStorage.removeItem(LOBBY_ADMIN_CODE_KEY);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function persistLobbyAdminCode(rawCode, updatedAt = Date.now()) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const code = String(rawCode || "").trim();
+  if (!code) {
+    clearPersistedLobbyAdminCode();
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(
+      LOBBY_ADMIN_CODE_KEY,
+      JSON.stringify({ code, updatedAt }),
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function loadPersistedLobbyAdminCode() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(LOBBY_ADMIN_CODE_KEY);
+    const parsed = JSON.parse(raw || "{}");
+    const code = String(parsed?.code || "").trim();
+    const updatedAt = Number(parsed?.updatedAt || 0);
+    const isFresh = Number.isFinite(updatedAt) && Date.now() - updatedAt <= LOBBY_ADMIN_CODE_TTL_MS;
+
+    if (!code || !isFresh) {
+      clearPersistedLobbyAdminCode();
+      return "";
+    }
+
+    return code;
+  } catch {
+    clearPersistedLobbyAdminCode();
+    return "";
+  }
+}
+
 function randomGameId() {
   return Math.random().toString(36).slice(2, 8);
 }
@@ -643,6 +703,13 @@ async function deleteLobbyPlayerName() {
     return;
   }
 
+  const providedCode = String(lobbyAdminCode.value || "").trim();
+  if (!providedCode) {
+    lobbyDeletePlayerError.value = "Vul de beheerderscode in.";
+    lobbyDeletePlayerMessage.value = "";
+    return;
+  }
+
   if (!window.confirm(`Weet je zeker dat je speler \"${name}\" wilt verwijderen?`)) {
     return;
   }
@@ -656,6 +723,9 @@ async function deleteLobbyPlayerName() {
   try {
     const response = await fetch(`${syncApiBaseUrl()}/api/player-names/${encodeURIComponent(name)}`, {
       method: "DELETE",
+      headers: {
+        "X-Admin-Code": providedCode,
+      },
     });
 
     if (response.status === 409) {
@@ -673,6 +743,15 @@ async function deleteLobbyPlayerName() {
       return;
     }
 
+    if (response.status === 403) {
+      const payload = await response.json().catch(() => ({}));
+      lobbyDeletePlayerError.value =
+        String(payload?.error || "Ongeldige beheerderscode.");
+      lobbyAdminCode.value = "";
+      clearPersistedLobbyAdminCode();
+      return;
+    }
+
     if (!response.ok) {
       lobbyDeletePlayerError.value = "Kon speler niet verwijderen.";
       return;
@@ -680,6 +759,7 @@ async function deleteLobbyPlayerName() {
 
     lobbyDeletePlayerName.value = "";
     lobbyDeletePlayerMessage.value = "Speler verwijderd.";
+    persistLobbyAdminCode(providedCode);
     await loadPlayerNameOptions();
     persistLobbyPlayers();
   } catch {
@@ -774,6 +854,12 @@ async function deleteSavedGame(gameCode) {
     return;
   }
 
+  const providedCode = String(lobbyAdminCode.value || "").trim();
+  if (!providedCode) {
+    showToast("Vul de beheerderscode in.");
+    return;
+  }
+
   if (!window.confirm(`Weet je zeker dat je spel \"${normalized}\" wilt verwijderen?`)) {
     return;
   }
@@ -781,7 +867,18 @@ async function deleteSavedGame(gameCode) {
   try {
     const response = await fetch(`${syncApiBaseUrl()}/api/games/${normalized}`, {
       method: "DELETE",
+      headers: {
+        "X-Admin-Code": providedCode,
+      },
     });
+
+    if (response.status === 403) {
+      const payload = await response.json().catch(() => ({}));
+      showToast(String(payload?.error || "Ongeldige beheerderscode."));
+      lobbyAdminCode.value = "";
+      clearPersistedLobbyAdminCode();
+      return;
+    }
 
     if (!response.ok && response.status !== 404) {
       showToast("Verwijderen van spel mislukt.");
@@ -789,6 +886,7 @@ async function deleteSavedGame(gameCode) {
     }
 
     showToast("Spel verwijderd.");
+    persistLobbyAdminCode(providedCode);
     await loadRecentGames();
     await refreshLobbyHostLock();
   } catch {
@@ -1132,6 +1230,10 @@ watch(lobbyGameCode, () => {
   void refreshLobbyHostLock();
 });
 
+watch(lobbyAdminCode, (value) => {
+  persistLobbyAdminCode(value);
+});
+
 watch(playerNameOptions, () => {
   const currentDeleteName = String(lobbyDeletePlayerName.value || "").trim();
   if (!currentDeleteName) {
@@ -1145,6 +1247,7 @@ watch(playerNameOptions, () => {
 
 onMounted(async () => {
   initGameFromUrl();
+  lobbyAdminCode.value = loadPersistedLobbyAdminCode();
   await loadPlayerNameOptions();
 
   if (!hasActiveGame.value) {
@@ -1657,6 +1760,7 @@ const chooserStats = computed(() => {
       :lobby-host-locked="lobbyHostLocked"
       :lobby-new-player-name="lobbyNewPlayerName"
       :lobby-delete-player-name="lobbyDeletePlayerName"
+      :lobby-admin-code="lobbyAdminCode"
       :is-adding-lobby-player="isAddingLobbyPlayer"
       :is-deleting-lobby-player="isDeletingLobbyPlayer"
       :lobby-player-message="lobbyPlayerMessage"
@@ -1672,6 +1776,7 @@ const chooserStats = computed(() => {
       @update:lobby-game-code="(value) => (lobbyGameCode = value)"
       @update:lobby-new-player-name="(value) => (lobbyNewPlayerName = value)"
       @update:lobby-delete-player-name="(value) => (lobbyDeletePlayerName = value)"
+      @update:lobby-admin-code="(value) => (lobbyAdminCode = value)"
       @start-host="goToGame(false)"
       @start-viewer="goToGame(true)"
       @add-player="addLobbyPlayerName"

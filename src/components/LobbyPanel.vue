@@ -42,6 +42,10 @@ const props = defineProps({
     type: String,
     default: "",
   },
+  lobbyAdminCode: {
+    type: String,
+    default: "",
+  },
   isDeletingLobbyPlayer: {
     type: Boolean,
     default: false,
@@ -89,6 +93,7 @@ const emit = defineEmits([
   "update:lobbyGameCode",
   "update:lobbyNewPlayerName",
   "update:lobbyDeletePlayerName",
+  "update:lobbyAdminCode",
   "start-host",
   "start-viewer",
   "add-player",
@@ -154,13 +159,30 @@ function deleteSelectedSavedGame() {
 
 <template>
   <section
-    class="mx-auto mt-8 w-full max-w-lg rounded-xl border border-sky-600 bg-sky-50 p-4 shadow-sm">
-    <h1 class="text-center text-2xl font-bold text-sky-900">
+    class="mx-auto mt-8 w-full max-w-lg rounded-xl border border-sky-600 bg-sky-50 p-2 shadow-sm">
+    <h1 class="mt-2 text-center text-2xl font-bold text-sky-900">
       Kingen Score Lobby
     </h1>
-    <div class="mt-4 rounded-lg border border-sky-200 bg-white/80 p-3">
+    <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
+      <div class="mt-1 rounded-lg border border-sky-200 bg-white/80 p-2">
+        <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
+          <label class="text-sm font-semibold text-sky-900">
+            Beheerderscode
+          </label>
+          <input
+            :value="props.lobbyAdminCode"
+            type="password"
+            maxlength="64"
+            class="h-8 w-full rounded border border-sky-300 bg-white px-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
+            placeholder="Code"
+            @input="emit('update:lobbyAdminCode', $event.target.value)" />
+          <span class="text-xs text-sky-700">Voor verwijderen spelers en spellen</span>
+        </div>
+      </div>
+    </div>
+    <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
       <p class="text-center text-lg font-semibold text-sky-900">Spelers</p>
-      <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-3">
+      <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
         <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
           <label class="text-sm font-semibold text-sky-900">
             Nieuwe speler
@@ -189,7 +211,7 @@ function deleteSelectedSavedGame() {
           {{ props.lobbyPlayerError }}
         </p>
       </div>
-      <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-3">
+      <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
         <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
           <label class="text-sm font-semibold text-sky-900">
             Verwijder speler
@@ -210,7 +232,7 @@ function deleteSelectedSavedGame() {
             type="button"
             class="h-8 rounded bg-rose-700 px-3 text-sm font-semibold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:bg-rose-300"
             :disabled="
-              props.isDeletingLobbyPlayer || !props.lobbyDeletePlayerName
+              props.isDeletingLobbyPlayer || !props.lobbyDeletePlayerName || !props.lobbyAdminCode
             "
             @click="emit('delete-player')">
             Verwijder
@@ -229,12 +251,12 @@ function deleteSelectedSavedGame() {
       </div>
     </div>
     <!-- Spel gegevens -->
-    <div class="mt-6 rounded-lg border border-sky-200 bg-white/80 p-3">
+    <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
       <p class="text-center text-lg font-semibold text-sky-900">
         Nieuw spel
       </p>
-    <div class="mt-4 grid gap-3">
-      <div class="rounded-lg border border-sky-200 bg-white/80 p-3">
+    <div class="mt-4 grid gap-2">
+      <div class="rounded-lg border border-sky-200 bg-white/80 p-2">
         <h2 class="text-sm font-semibold text-sky-900">Kies 4 spelers</h2>
         <div class="mt-2 grid grid-cols-4 gap-1 md:grid-cols-4">
           <div
@@ -263,7 +285,7 @@ function deleteSelectedSavedGame() {
         <p v-if="props.lobbySelectionError" class="mt-1 text-xs text-rose-700">
           {{ props.lobbySelectionError }}
         </p>
-        <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-3">
+        <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
           <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
             <label class="text-sm font-semibold text-sky-900" for="game-code">
               Nieuwe spel code
@@ -293,7 +315,7 @@ function deleteSelectedSavedGame() {
         Deze gamecode heeft al een actieve host.
       </p>
 
-      <div class="mt-4 rounded-lg border border-sky-200 bg-white/80 p-3">
+      <div class="mt-4 rounded-lg border border-sky-200 bg-white/80 p-2">
         <p class="text-center text-lg font-semibold text-sky-900">Reeds gespeeld</p>
         <p v-if="props.recentGamesLoading" class="text-xs text-sky-700">
           Games laden...
@@ -343,7 +365,7 @@ function deleteSelectedSavedGame() {
             <button
               type="button"
               class="rounded border border-rose-400 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="!selectedRecentGame"
+              :disabled="!selectedRecentGame || !props.lobbyAdminCode"
               @click="deleteSelectedSavedGame">
               Verwijder spel
             </button>
