@@ -12,7 +12,6 @@ Eerste setup van een Vue 3 webapp om de score van Kingen bij te houden.
 
 - `npm install` - dependencies installeren
 - `npm run dev` - lokale ontwikkelserver starten
-- `npm run dev:api` - API server starten voor gedeelde stand (MariaDB)
 - `npm run build` - productiebuild maken
 - `npm run preview` - productiebuild lokaal previewen
 
@@ -27,28 +26,19 @@ Voorbeeld:
 
 Iedere telefoon met dezelfde `game` ziet dezelfde stand.
 
-## MariaDB sync instellen
+## Laurierboom API gebruiken
 
-1. Maak database en tabel aan:
+1. Start de centrale API:
 
-	- De state wordt opgeslagen in de bestaande database `laurierboom`.
-	- Voer [server/schema.sql](server/schema.sql) uit in MariaDB om alleen de `kingen_game_states`-tabel aan te maken.
-	- De speleropties komen uit de tabel `spelers` in dezelfde database.
+	- Ga naar `../api`.
+	- Kopieer `.env.example` naar `.env` als dat nog niet gedaan is.
+	- Start de backend met `npm install` en daarna `npm start`.
 
-2. Maak env-bestand:
-
-	- Kopieer [server/.env.example](server/.env.example) naar `server/.env`.
-	- Vul je MariaDB credentials in.
-
-3. Start de API:
-
-	- `npm run dev:api`
-
-4. Start de frontend:
+2. Start de frontend:
 
 	- `npm run dev -- --host`
 
-Standaard zoekt de frontend de API op `http://<zelfde-host>:3001`.
+Standaard zoekt Kingscore de API nu op `http://<zelfde-host>:54321`.
 Wil je een andere URL gebruiken, zet dan `VITE_SYNC_API_URL` in een `.env` bestand in de projectroot.
 
 ## Wat zit er in deze eerste versie?

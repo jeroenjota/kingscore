@@ -38,6 +38,22 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  lobbyDeletePlayerName: {
+    type: String,
+    default: "",
+  },
+  isDeletingLobbyPlayer: {
+    type: Boolean,
+    default: false,
+  },
+  lobbyDeletePlayerMessage: {
+    type: String,
+    default: "",
+  },
+  lobbyDeletePlayerError: {
+    type: String,
+    default: "",
+  },
   lobbyPlayerMessage: {
     type: String,
     default: "",
@@ -72,12 +88,15 @@ const emit = defineEmits([
   "update:lobbyPlayerAt",
   "update:lobbyGameCode",
   "update:lobbyNewPlayerName",
+  "update:lobbyDeletePlayerName",
   "start-host",
   "start-viewer",
   "add-player",
+  "delete-player",
   "refresh-games",
   "open-saved-host",
   "open-saved-viewer",
+  "delete-saved-game",
 ]);
 
 function updateLobbyPlayerAt(index, value) {
@@ -86,15 +105,19 @@ function updateLobbyPlayerAt(index, value) {
 
 const selectedRecentGameId = ref("");
 
-const selectedRecentGame = computed(() =>
-  props.recentGames.find((item) => item.gameId === selectedRecentGameId.value) ||
-  null,
+const selectedRecentGame = computed(
+  () =>
+    props.recentGames.find(
+      (item) => item.gameId === selectedRecentGameId.value,
+    ) || null,
 );
 
 watch(
   () => props.recentGames,
   (games) => {
-    const hasCurrent = games.some((item) => item.gameId === selectedRecentGameId.value);
+    const hasCurrent = games.some(
+      (item) => item.gameId === selectedRecentGameId.value,
+    );
     if (hasCurrent) {
       return;
     }
@@ -119,6 +142,14 @@ function openSelectedSavedViewer() {
 
   emit("open-saved-viewer", selectedRecentGame.value.gameId);
 }
+
+function deleteSelectedSavedGame() {
+  if (!selectedRecentGame.value) {
+    return;
+  }
+
+  emit("delete-saved-game", selectedRecentGame.value.gameId);
+}
 </script>
 
 <template>
@@ -127,13 +158,84 @@ function openSelectedSavedViewer() {
     <h1 class="text-center text-2xl font-bold text-sky-900">
       Kingen Score Lobby
     </h1>
-    <p class="mt-2 text-center text-sm text-sky-700">
-      Kies 4 spelers en open de tafel als host of kijker.
-    </p>
-
+    <div class="mt-4 rounded-lg border border-sky-200 bg-white/80 p-3">
+      <p class="text-center text-lg font-semibold text-sky-900">Spelers</p>
+      <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-3">
+        <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
+          <label class="text-sm font-semibold text-sky-900">
+            Nieuwe speler
+          </label>
+          <input
+            :value="props.lobbyNewPlayerName"
+            type="text"
+            maxlength="64"
+            class="h-8 w-full rounded border border-sky-300 bg-white px-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
+            placeholder="Naam"
+            @input="emit('update:lobbyNewPlayerName', $event.target.value)" />
+          <button
+            type="button"
+            class="h-8 rounded bg-sky-700 px-3 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-300"
+            :disabled="props.isAddingLobbyPlayer"
+            @click="emit('add-player')">
+            Voeg toe
+          </button>
+        </div>
+        <p
+          v-if="props.lobbyPlayerMessage"
+          class="mt-1 text-xs text-emerald-700">
+          {{ props.lobbyPlayerMessage }}
+        </p>
+        <p v-if="props.lobbyPlayerError" class="mt-1 text-xs text-rose-700">
+          {{ props.lobbyPlayerError }}
+        </p>
+      </div>
+      <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-3">
+        <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
+          <label class="text-sm font-semibold text-sky-900">
+            Verwijder speler
+          </label>
+          <select
+            :value="props.lobbyDeletePlayerName"
+            class="h-8 w-full rounded border border-sky-300 bg-white px-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
+            @change="emit('update:lobbyDeletePlayerName', $event.target.value)">
+            <option value="">Kies speler</option>
+            <option
+              v-for="name in props.playerNameOptions"
+              :key="`delete-${name}`"
+              :value="name">
+              {{ name }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="h-8 rounded bg-rose-700 px-3 text-sm font-semibold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:bg-rose-300"
+            :disabled="
+              props.isDeletingLobbyPlayer || !props.lobbyDeletePlayerName
+            "
+            @click="emit('delete-player')">
+            Verwijder
+          </button>
+        </div>
+        <p
+          v-if="props.lobbyDeletePlayerMessage"
+          class="mt-1 text-xs text-emerald-700">
+          {{ props.lobbyDeletePlayerMessage }}
+        </p>
+        <p
+          v-if="props.lobbyDeletePlayerError"
+          class="mt-1 text-xs text-rose-700">
+          {{ props.lobbyDeletePlayerError }}
+        </p>
+      </div>
+    </div>
+    <!-- Spel gegevens -->
+    <div class="mt-6 rounded-lg border border-sky-200 bg-white/80 p-3">
+      <p class="text-center text-lg font-semibold text-sky-900">
+        Nieuw spel
+      </p>
     <div class="mt-4 grid gap-3">
       <div class="rounded-lg border border-sky-200 bg-white/80 p-3">
-        <h2 class="text-sm font-semibold text-sky-900">Kies 4 King spelers</h2>
+        <h2 class="text-sm font-semibold text-sky-900">Kies 4 spelers</h2>
         <div class="mt-2 grid grid-cols-4 gap-1 md:grid-cols-4">
           <div
             v-for="(_selectedName, index) in props.lobbySelectedPlayers"
@@ -157,37 +259,6 @@ function openSelectedSavedViewer() {
             </select>
           </div>
         </div>
-        <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-3">
-          <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
-            <label class="text-sm font-semibold text-sky-900">
-              Nieuwe speler
-            </label>
-            <input
-              :value="props.lobbyNewPlayerName"
-              type="text"
-              maxlength="64"
-              class="h-8 w-full rounded border border-sky-300 bg-white px-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
-              placeholder="Naam"
-              @input="emit('update:lobbyNewPlayerName', $event.target.value)"
-            />
-            <button
-              type="button"
-              class="h-8 rounded bg-sky-700 px-3 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-300"
-              :disabled="props.isAddingLobbyPlayer"
-              @click="emit('add-player')"
-            >
-              Voeg toe
-            </button>
-          </div>
-          <p
-            v-if="props.lobbyPlayerMessage"
-            class="mt-1 text-xs text-emerald-700">
-            {{ props.lobbyPlayerMessage }}
-          </p>
-          <p v-if="props.lobbyPlayerError" class="mt-1 text-xs text-rose-700">
-            {{ props.lobbyPlayerError }}
-          </p>
-        </div>
 
         <p v-if="props.lobbySelectionError" class="mt-1 text-xs text-rose-700">
           {{ props.lobbySelectionError }}
@@ -204,14 +275,12 @@ function openSelectedSavedViewer() {
               maxlength="12"
               class="h-8 w-full rounded border border-sky-300 bg-white px-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
               placeholder="bijv. tafel1"
-              @input="emit('update:lobbyGameCode', $event.target.value)"
-            />
+              @input="emit('update:lobbyGameCode', $event.target.value)" />
             <button
               type="button"
               class="h-8 rounded bg-sky-700 px-3 text-sm font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-300"
               :disabled="props.isStartHostDisabled"
-              @click="emit('start-host')"
-            >
+              @click="emit('start-host')">
               Start spel
             </button>
           </div>
@@ -225,16 +294,7 @@ function openSelectedSavedViewer() {
       </p>
 
       <div class="mt-4 rounded-lg border border-sky-200 bg-white/80 p-3">
-        <div class="mb-2 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-sky-900">Aangemaakte games</h2>
-          <button
-            type="button"
-            class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50"
-            @click="emit('refresh-games')">
-            Vernieuwen
-          </button>
-        </div>
-
+        <p class="text-center text-lg font-semibold text-sky-900">Reeds gespeeld</p>
         <p v-if="props.recentGamesLoading" class="text-xs text-sky-700">
           Games laden...
         </p>
@@ -248,21 +308,20 @@ function openSelectedSavedViewer() {
         </p>
 
         <div v-else class="grid gap-2">
-          <div class="grid grid-cols-[1fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
-            <span>Datum</span>
-            <span>Code</span>
+          <div
+            class="grid grid-cols-[1fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+            <span>Datum / Code</span>
           </div>
 
           <select
             v-model="selectedRecentGameId"
-            class="w-full rounded border border-sky-300 bg-white px-2 py-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
-          >
+            class="w-full rounded border border-sky-300 bg-white px-2 py-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70">
             <option
               v-for="item in props.recentGames"
               :key="item.gameId"
-              :value="item.gameId"
-            >
-              {{ props.formatUpdatedAt(item.updatedAt) }} | {{ item.gameId.toUpperCase() }}
+              :value="item.gameId">
+              {{ props.formatUpdatedAt(item.updatedAt) }} |
+              {{ item.gameId.toUpperCase() }}
             </option>
           </select>
 
@@ -271,21 +330,27 @@ function openSelectedSavedViewer() {
               type="button"
               class="rounded bg-sky-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-sky-300"
               :disabled="!selectedRecentGame || selectedRecentGame.hostLocked"
-              @click="openSelectedSavedHost"
-            >
+              @click="openSelectedSavedHost">
               Open als Gastheer
             </button>
             <button
               type="button"
               class="rounded border border-sky-400 bg-white px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="!selectedRecentGame"
-              @click="openSelectedSavedViewer"
-            >
+              @click="openSelectedSavedViewer">
               Open als kijker/speler
+            </button>
+            <button
+              type="button"
+              class="rounded border border-rose-400 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!selectedRecentGame"
+              @click="deleteSelectedSavedGame">
+              Verwijder spel
             </button>
           </div>
         </div>
       </div>
+    </div>
     </div>
   </section>
 </template>

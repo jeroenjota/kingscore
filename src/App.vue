@@ -265,9 +265,13 @@ const recentGamesError = ref("");
 const lobbyHostLocked = ref(false);
 const lobbyHostCheckLoading = ref(false);
 const lobbyNewPlayerName = ref("");
+const lobbyDeletePlayerName = ref("");
 const lobbyPlayerMessage = ref("");
 const lobbyPlayerError = ref("");
+const lobbyDeletePlayerMessage = ref("");
+const lobbyDeletePlayerError = ref("");
 const isAddingLobbyPlayer = ref(false);
+const isDeletingLobbyPlayer = ref(false);
 const lobbySelectedPlayers = ref(["", "", "", ""]);
 const lobbySelectionError = ref("");
 const hostClientId = ref("");
@@ -418,7 +422,12 @@ function syncApiBaseUrl() {
     return import.meta.env.VITE_SYNC_API_URL;
   }
 
-  return `${window.location.protocol}//${window.location.hostname}:3001`;
+  const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  if (isLocalHost) {
+    return `${window.location.protocol}//${window.location.hostname}:54321`;
+  }
+
+  return `${window.location.origin}/laurierboom/api`;
 }
 
 async function loadPlayerNameOptions() {
@@ -445,36 +454,7 @@ function initializeLobbySelectedPlayers() {
     return;
   }
 
-  let selectedNames = [];
-  try {
-    const raw = window.localStorage.getItem(LOBBY_PLAYERS_KEY);
-    const parsed = JSON.parse(raw || "[]");
-    selectedNames = Array.isArray(parsed)
-      ? parsed.map((item) => String(item || "").trim())
-      : [];
-  } catch {
-    selectedNames = [];
-  }
-
-  const validSelected = selectedNames
-    .filter((name) => playerNameOptions.value.includes(name))
-    .slice(0, 4);
-  const fallback = playerNameOptions.value.filter(
-    (name) => !validSelected.includes(name),
-  );
-
-  while (validSelected.length < 4 && fallback.length) {
-    const nextName = fallback.shift();
-    if (nextName) {
-      validSelected.push(nextName);
-    }
-  }
-
-  while (validSelected.length < 4) {
-    validSelected.push("");
-  }
-
-  lobbySelectedPlayers.value = validSelected;
+  lobbySelectedPlayers.value = ["", "", "", ""];
 }
 
 function isLobbyPlayerOptionDisabled(name, currentIndex) {
@@ -644,12 +624,68 @@ async function addLobbyPlayerName() {
 
     lobbyNewPlayerName.value = "";
     lobbyPlayerMessage.value = "Speler toegevoegd.";
+    lobbyDeletePlayerMessage.value = "";
+    lobbyDeletePlayerError.value = "";
     await loadPlayerNameOptions();
     persistLobbyPlayers();
   } catch {
     lobbyPlayerError.value = "Kon speler niet toevoegen.";
   } finally {
     isAddingLobbyPlayer.value = false;
+  }
+}
+
+async function deleteLobbyPlayerName() {
+  const name = String(lobbyDeletePlayerName.value || "").trim();
+  if (!name) {
+    lobbyDeletePlayerError.value = "Kies een speler om te verwijderen.";
+    lobbyDeletePlayerMessage.value = "";
+    return;
+  }
+
+  if (!window.confirm(`Weet je zeker dat je speler \"${name}\" wilt verwijderen?`)) {
+    return;
+  }
+
+  isDeletingLobbyPlayer.value = true;
+  lobbyDeletePlayerError.value = "";
+  lobbyDeletePlayerMessage.value = "";
+  lobbyPlayerMessage.value = "";
+  lobbyPlayerError.value = "";
+
+  try {
+    const response = await fetch(`${syncApiBaseUrl()}/api/player-names/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
+
+    if (response.status === 409) {
+      const payload = await response.json().catch(() => ({}));
+      const gameIds = Array.isArray(payload?.gameIds) ? payload.gameIds.filter(Boolean) : [];
+      lobbyDeletePlayerError.value = gameIds.length
+        ? `Kan niet verwijderen: speler zit in bestaande spellen (${gameIds.join(", ")}).`
+        : "Kan niet verwijderen: speler zit in bestaand spel.";
+      return;
+    }
+
+    if (response.status === 404) {
+      lobbyDeletePlayerError.value = "Speler bestaat niet (meer).";
+      await loadPlayerNameOptions();
+      return;
+    }
+
+    if (!response.ok) {
+      lobbyDeletePlayerError.value = "Kon speler niet verwijderen.";
+      return;
+    }
+
+    lobbyDeletePlayerName.value = "";
+    lobbyDeletePlayerMessage.value = "Speler verwijderd.";
+    await loadPlayerNameOptions();
+    persistLobbyPlayers();
+  } catch {
+    lobbyDeletePlayerError.value = "Kon speler niet verwijderen.";
+  } finally {
+    isDeletingLobbyPlayer.value = false;
   }
 }
 
@@ -729,6 +765,34 @@ async function loadRecentGames() {
     recentGames.value = [];
   } finally {
     recentGamesLoading.value = false;
+  }
+}
+
+async function deleteSavedGame(gameCode) {
+  const normalized = normalizeGameCode(gameCode);
+  if (!normalized) {
+    return;
+  }
+
+  if (!window.confirm(`Weet je zeker dat je spel \"${normalized}\" wilt verwijderen?`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${syncApiBaseUrl()}/api/games/${normalized}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok && response.status !== 404) {
+      showToast("Verwijderen van spel mislukt.");
+      return;
+    }
+
+    showToast("Spel verwijderd.");
+    await loadRecentGames();
+    await refreshLobbyHostLock();
+  } catch {
+    showToast("Verwijderen van spel mislukt.");
   }
 }
 
@@ -1066,6 +1130,17 @@ watch(
 
 watch(lobbyGameCode, () => {
   void refreshLobbyHostLock();
+});
+
+watch(playerNameOptions, () => {
+  const currentDeleteName = String(lobbyDeletePlayerName.value || "").trim();
+  if (!currentDeleteName) {
+    return;
+  }
+
+  if (!playerNameOptions.value.includes(currentDeleteName)) {
+    lobbyDeletePlayerName.value = "";
+  }
 });
 
 onMounted(async () => {
@@ -1581,9 +1656,13 @@ const chooserStats = computed(() => {
       :lobby-host-check-loading="lobbyHostCheckLoading"
       :lobby-host-locked="lobbyHostLocked"
       :lobby-new-player-name="lobbyNewPlayerName"
+      :lobby-delete-player-name="lobbyDeletePlayerName"
       :is-adding-lobby-player="isAddingLobbyPlayer"
+      :is-deleting-lobby-player="isDeletingLobbyPlayer"
       :lobby-player-message="lobbyPlayerMessage"
       :lobby-player-error="lobbyPlayerError"
+      :lobby-delete-player-message="lobbyDeletePlayerMessage"
+      :lobby-delete-player-error="lobbyDeletePlayerError"
       :recent-games-loading="recentGamesLoading"
       :recent-games-error="recentGamesError"
       :recent-games="recentGames"
@@ -1592,12 +1671,15 @@ const chooserStats = computed(() => {
       @update:lobby-player-at="({ index, value }) => (lobbySelectedPlayers[index] = value)"
       @update:lobby-game-code="(value) => (lobbyGameCode = value)"
       @update:lobby-new-player-name="(value) => (lobbyNewPlayerName = value)"
+      @update:lobby-delete-player-name="(value) => (lobbyDeletePlayerName = value)"
       @start-host="goToGame(false)"
       @start-viewer="goToGame(true)"
       @add-player="addLobbyPlayerName"
+      @delete-player="deleteLobbyPlayerName"
       @refresh-games="loadRecentGames"
       @open-saved-host="(gameId) => openSavedGame(gameId, false)"
       @open-saved-viewer="(gameId) => openSavedGame(gameId, true)"
+      @delete-saved-game="(gameId) => deleteSavedGame(gameId)"
     />
 
     <section
