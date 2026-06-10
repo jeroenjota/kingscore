@@ -38,6 +38,7 @@ const emit = defineEmits([
   "update:lobbyPlayerAt",
   "update:lobbyGameCode",
   "start-host",
+  "reset-host-session",
 ]);
 
 function updateLobbyPlayerAt(index, value) {
@@ -109,6 +110,13 @@ function updateLobbyPlayerAt(index, value) {
       <p v-if="props.lobbyHostLocked" class="text-xs text-amber-700">
         Deze gamecode heeft al een actieve host.
       </p>
+      <button
+        v-if="props.lobbyHostLocked"
+        type="button"
+        class="w-fit rounded border border-amber-400 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+        @click="emit('reset-host-session')">
+        Reset host op dit toestel
+      </button>
     </div>
   </div>
 </template>

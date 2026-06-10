@@ -201,13 +201,13 @@ const props = defineProps({
 
         <tr>
           <th
-            class="w-18 md:w-22 sticky left-0 z-10 border-b border-sky-200 bg-sky-100/70 px-1 py-0.5 text-right text-[12px] text-red-700 md:px-1.5 md:py-1 md:text-xs">
-            Negatief
+            class="w-18 md:w-22 sticky left-0 z-10 border-b-2 border-sky-300 bg-sky-100/70 px-1 py-0.5 text-right text-[12px] text-red-700 md:px-1.5 md:py-1 md:text-xs">
+            Totaal Negatief
           </th>
           <th
             v-for="player in props.players"
             :key="`negative-subtotal-${player.id}`"
-            class="border border-sky-200 bg-sky-100/70 px-1 py-1 text-center text-[12px] font-bold md:px-1.5 md:py-1.5 md:text-xs"
+            class="border border-b-2 border-sky-200 border-b-sky-300 bg-sky-100/70 px-1 py-1 text-right text-[14px] font-bold md:px-1.5 md:py-1.5 md:text-xs"
             :class="props.pointsClass(props.negativeTotals[player.id])">
             {{ props.negativeTotals[player.id] }}
           </th>
@@ -222,10 +222,10 @@ const props = defineProps({
             :class="[
               props.isRowFull(round) ? 'bg-emerald-200' : 'bg-sky-50',
               props.isPossibleChoiceRound(round) ? 'bg-amber-100' : '',
-              props.rowGroupClass(round),
+              'border-l border-r border-sky-200',
             ]">
             <p
-              class="text-right text-[14px] font-semibold leading-tight text-sky-950 md:text-base"
+              class="text-[14px] font-semibold leading-tight text-sky-950 md:text-base"
               v-html="props.roundPrimaryLabelHtml(round)"></p>
           </td>
 
@@ -238,7 +238,7 @@ const props = defineProps({
               props.isPossibleChoiceCell(round, player.id)
                 ? 'bg-amber-50 ring-1 ring-inset ring-amber-300'
                 : '',
-              props.rowGroupClass(round),
+              'border-l border-r border-sky-200',
             ]"
             @click="props.openCellEditor(round, player.id)">
             <div class="flex items-center gap-1">
@@ -287,13 +287,13 @@ const props = defineProps({
 
         <tr>
           <th
-            class="w-18 md:w-22 sticky left-0 z-10 border-b border-sky-200 bg-sky-100/70 px-1 py-0.5 text-right text-[12px] text-emerald-600 md:px-1.5 md:py-1 md:text-xs">
-            Positief
+            class="w-18 md:w-22 sticky left-0 z-10 border-b-2 border-sky-300 bg-sky-100/70 px-1 py-0.5 text-right text-[12px] text-emerald-600 md:px-1.5 md:py-1 md:text-xs">
+            Totaal Positief
           </th>
           <th
             v-for="player in props.players"
             :key="`positive-subtotal-${player.id}`"
-            class="border border-sky-200 bg-sky-100/70 px-1 py-1 text-center text-[12px] font-bold md:px-1.5 md:py-1.5 md:text-xs"
+            class="border border-b-2 border-sky-200 border-b-sky-300 bg-sky-100/70 px-1 py-1 text-right text-[14px] font-bold md:px-1.5 md:py-1.5 md:text-xs"
             :class="props.pointsClass(props.positiveTotals[player.id])">
             {{ props.positiveTotals[player.id] }}
           </th>
@@ -303,13 +303,13 @@ const props = defineProps({
       <tfoot>
         <tr>
           <th
-            class="w-18 md:w-22 sticky left-0 z-20 border-t border-sky-300 bg-sky-100 px-1 py-0.5 text-right text-[12px] font-bold text-sky-950 md:px-1.5 md:py-1 md:text-xs">
+            class="w-18 md:w-22 sticky left-0 z-20 border-t border-sky-300 bg-sky-100 px-1 py-0.5 text-right text-[14px] font-bold text-sky-950 md:px-1.5 md:py-1 md:text-xs">
             Totaal
           </th>
           <th
             v-for="player in props.players"
             :key="`total-${player.id}`"
-            class="border border-sky-200 bg-sky-100 px-1 py-1 text-center text-[12px] font-bold md:px-1.5 md:py-1.5 md:text-xs"
+            class="border border-sky-200 bg-sky-100 px-1 py-1 text-right text-[14px] font-bold md:px-1.5 md:py-1.5 md:text-xs"
             :class="props.pointsClass(props.grandTotals[player.id])">
             {{ props.grandTotals[player.id] }}
           </th>

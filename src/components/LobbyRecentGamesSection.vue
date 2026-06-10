@@ -71,7 +71,7 @@ function openSelectedSavedViewer() {
 }
 
 function deleteSelectedSavedGame() {
-  if (!selectedRecentGame.value) {
+  if (!selectedRecentGame.value || selectedRecentGame.value.hostLocked) {
     return;
   }
 
@@ -81,7 +81,9 @@ function deleteSelectedSavedGame() {
 
 <template>
   <div class="mt-4 rounded-lg border border-sky-200 bg-white/80 p-2">
-    <p class="text-center text-lg font-semibold text-sky-900">Reeds gespeeld</p>
+    <div class="flex items-center justify-between gap-2">
+      <p class="text-lg font-semibold text-sky-900">Reeds gespeeld</p>
+    </div>
     <p v-if="props.recentGamesLoading" class="text-xs text-sky-700">
       Games laden...
     </p>
@@ -95,11 +97,6 @@ function deleteSelectedSavedGame() {
     </p>
 
     <div v-else class="grid gap-2">
-      <div
-        class="grid grid-cols-[1fr_auto] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
-        <span>Datum / Code</span>
-      </div>
-
       <select
         v-model="selectedRecentGameId"
         class="w-full rounded border border-sky-300 bg-white px-2 py-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70">
@@ -130,11 +127,14 @@ function deleteSelectedSavedGame() {
         <button
           type="button"
           class="rounded border border-rose-400 bg-white px-2 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="!selectedRecentGame || !props.lobbyAdminCode"
+          :disabled="!selectedRecentGame || !props.lobbyAdminCode || selectedRecentGame.hostLocked"
           @click="deleteSelectedSavedGame">
           Verwijder spel
         </button>
       </div>
+      <p v-if="selectedRecentGame?.hostLocked" class="text-xs text-amber-700">
+        Verwijderen is uitgeschakeld zolang een host actief is.
+      </p>
     </div>
   </div>
 </template>

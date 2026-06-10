@@ -37,16 +37,26 @@ const emit = defineEmits([
   "open-saved-host",
   "open-saved-viewer",
   "delete-saved-game",
+  "open-help-page",
+  "reset-host-session",
 ]);
 </script>
 
 <template>
   <section
     class="mx-auto mt-8 w-full max-w-lg rounded-xl border border-sky-600 bg-sky-50 p-2 shadow-sm">
-    <h1 class="mt-2 text-center text-2xl font-bold text-sky-900">
-      Kingen Score Lobby
-    </h1>
 
+    <div class="flex items-center justify-between gap-2">
+      <h1 class="mt-2 text-center text-2xl font-bold text-sky-900">
+        Kingen Score Lobby
+      </h1>
+        <button
+          type="button"
+          class="rounded border border-sky-300 bg-white px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-50"
+          @click="emit('open-help-page')">
+          Help & regels
+        </button>
+    </div>
     <LobbyAdminSection
       :lobby-admin-code="props.adminState.lobbyAdminCode"
       @update:lobby-admin-code="(value) => emit('update:lobbyAdminCode', value)" />
@@ -78,7 +88,8 @@ const emit = defineEmits([
       :lobby-host-locked="props.newGameState.lobbyHostLocked"
       @update:lobby-player-at="({ index, value }) => emit('update:lobbyPlayerAt', { index, value })"
       @update:lobby-game-code="(value) => emit('update:lobbyGameCode', value)"
-      @start-host="emit('start-host')" />
+      @start-host="emit('start-host')"
+      @reset-host-session="emit('reset-host-session')" />
 
     <LobbyRecentGamesSection
       :recent-games-loading="props.recentGamesState.recentGamesLoading"
@@ -88,6 +99,7 @@ const emit = defineEmits([
       :format-updated-at="props.recentGamesState.formatUpdatedAt"
       @open-saved-host="(gameId) => emit('open-saved-host', gameId)"
       @open-saved-viewer="(gameId) => emit('open-saved-viewer', gameId)"
-      @delete-saved-game="(gameId) => emit('delete-saved-game', gameId)" />
+      @delete-saved-game="(gameId) => emit('delete-saved-game', gameId)"
+      @open-help-page="emit('open-help-page')" />
   </section>
 </template>

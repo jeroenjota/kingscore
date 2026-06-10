@@ -2,10 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import QRCode from "qrcode";
 import LobbyPanel from "./components/LobbyPanel.vue";
+import HelpPage from "./components/HelpPage.vue";
 import ScoreTable from "./components/ScoreTable.vue";
 import ViewerQrModal from "./components/ViewerQrModal.vue";
 import ResultsModal from "./components/ResultsModal.vue";
 import {
+  DEFAULT_PLAYER_NAMES,
   MAX_NEGATIVE_CHOICES,
   MAX_POSITIVE_CHOICES,
   detectInitialGameId,
@@ -69,6 +71,7 @@ const recentGamesLoading = ref(false);
 const recentGamesError = ref("");
 const lobbyHostLocked = ref(false);
 const lobbyHostCheckLoading = ref(false);
+const showHelpPage = ref(false);
 const lobbyNewPlayerName = ref("");
 const lobbyDeletePlayerName = ref("");
 const lobbyAdminCode = ref("");
@@ -83,7 +86,7 @@ const lobbySelectionError = ref("");
 const hostClientId = ref("");
 const toastMessage = ref("");
 const isStartHostDisabled = computed(
-  () => lobbyHostLocked.value || lobbyHostCheckLoading.value,
+  () => lobbyHostCheckLoading.value,
 );
 
 let syncTimerId = null;
@@ -124,6 +127,7 @@ const {
   deleteSavedGame,
   refreshLobbyHostLock,
   claimHostLockForGame,
+  releaseHostLockForGame,
 } = useLobbyApi({
   lobbyAdminCodeKey: LOBBY_ADMIN_CODE_KEY,
   lobbyAdminCodeTtlMs: LOBBY_ADMIN_CODE_TTL_MS,
@@ -243,6 +247,18 @@ function initGameFromUrl() {
   }
 }
 
+function openHelpPage() {
+  if (hasActiveGame.value) {
+    return;
+  }
+
+  showHelpPage.value = true;
+}
+
+function closeHelpPage() {
+  showHelpPage.value = false;
+}
+
 function normalizeGameCode(rawCode) {
   return String(rawCode || "")
     .trim()
@@ -350,6 +366,33 @@ function formatUpdatedAt(timestamp) {
   }).format(new Date(numeric));
 }
 
+function resolveLobbyPlayersForStart() {
+  const selected = lobbySelectedPlayers.value.map((name) => String(name || "").trim());
+  const filledNames = selected.filter(Boolean);
+
+  if (filledNames.length === 0) {
+    const shouldUseDefaults = window.confirm(
+      `Er zijn nog geen spelers gekozen. Wil je doorgaan met ${DEFAULT_PLAYER_NAMES.join(", ")}?`,
+    );
+
+    if (!shouldUseDefaults) {
+      lobbySelectionError.value = "Game starten geannuleerd. Kies vier spelers om verder te gaan.";
+      return null;
+    }
+
+    return [...DEFAULT_PLAYER_NAMES];
+  }
+
+  const uniqueSelected = [...new Set(filledNames)];
+  if (uniqueSelected.length !== 4) {
+    lobbySelectionError.value =
+      "Kies vier verschillende spelers om de game te starten.";
+    return null;
+  }
+
+  return uniqueSelected;
+}
+
 async function openSavedGame(code, viewerMode) {
   if (typeof window === "undefined") {
     return;
@@ -392,13 +435,17 @@ async function goToGame(viewerMode) {
     return;
   }
 
-  if (!viewerMode) {
-    await refreshLobbyHostLock();
-    if (lobbyHostLocked.value || isStartHostDisabled.value) {
-      showToast("Host is al actief voor deze gamecode.");
-      return;
+  const selectedPlayers = resolveLobbyPlayersForStart();
+  if (!selectedPlayers) {
+    if (!viewerMode) {
+      lobbyHostLocked.value = false;
     }
+    return;
+  }
 
+  lobbySelectionError.value = "";
+
+  if (!viewerMode) {
     const lockClaimed = await claimHostLockForGame(normalized);
     if (!lockClaimed) {
       await refreshLobbyHostLock();
@@ -408,17 +455,7 @@ async function goToGame(viewerMode) {
     }
   }
 
-  const selected = lobbySelectedPlayers.value
-    .map((name) => String(name || "").trim())
-    .filter(Boolean);
-  const uniqueSelected = [...new Set(selected)];
-  if (uniqueSelected.length !== 4) {
-    lobbySelectionError.value =
-      "Kies vier verschillende spelers om de game te starten.";
-    return;
-  }
-
-  lobbySelectionError.value = "";
+  lobbySelectedPlayers.value = [...selectedPlayers];
   persistLobbyPlayers();
 
   const url = new URL(window.location.href);
@@ -431,6 +468,32 @@ async function goToGame(viewerMode) {
   }
 
   window.location.assign(url.toString());
+}
+
+async function resetHostSessionFromLobby() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const key = "kingscore-host-id-v1";
+  const existingHostId = String(window.sessionStorage.getItem(key) || "")
+    .trim()
+    .toLowerCase();
+  const normalizedCode = normalizeGameCode(lobbyGameCode.value);
+
+  if (existingHostId) {
+    hostClientId.value = existingHostId;
+  }
+
+  if (normalizedCode && existingHostId) {
+    await releaseHostLockForGame(normalizedCode);
+  }
+
+  window.sessionStorage.removeItem(key);
+  hostClientId.value = "";
+  lobbyHostLocked.value = false;
+  await refreshLobbyHostLock();
+  showToast("Lokale host-instelling gereset.");
 }
 
 async function openLobby() {
@@ -654,6 +717,7 @@ watch(
 );
 
 watch(lobbyGameCode, () => {
+  lobbyHostLocked.value = false;
   void refreshLobbyHostLock();
 });
 
@@ -780,7 +844,7 @@ const {
     </div>
 
     <LobbyPanel
-      v-if="!hasActiveGame"
+      v-if="!hasActiveGame && !showHelpPage"
       :admin-state="{
         lobbyAdminCode,
       }"
@@ -823,7 +887,13 @@ const {
       @open-saved-host="(gameId) => openSavedGame(gameId, false)"
       @open-saved-viewer="(gameId) => openSavedGame(gameId, true)"
       @delete-saved-game="(gameId) => deleteSavedGame(gameId)"
+      @open-help-page="openHelpPage"
+      @reset-host-session="resetHostSessionFromLobby"
     />
+
+    <HelpPage
+      v-else-if="!hasActiveGame && showHelpPage"
+      @close-help="closeHelpPage" />
 
     <section
       v-else
@@ -855,7 +925,7 @@ const {
             type="button"
             class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50"
             @click="toggleViewerQrCode">
-            {{ showViewerQrCode ? "Verberg QR" : "Toon QR" }}
+            {{ showViewerQrCode ? "<=" : "QR" }}
           </button>
         </div>
         <div

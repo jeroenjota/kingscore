@@ -7,6 +7,8 @@ export function useLobbyApi({
   showToast,
   getOrCreateHostClientId,
 }) {
+  let latestHostLockRequestId = 0;
+
   function syncApiBaseUrl() {
     if (typeof window === "undefined") {
       return "";
@@ -256,9 +258,13 @@ export function useLobbyApi({
 
   async function refreshLobbyHostLock() {
     const normalized = normalizeGameCode(state.lobbyGameCode.value);
+    const requestId = ++latestHostLockRequestId;
+
     if (!normalized) {
-      state.lobbyHostLocked.value = false;
-      state.lobbyHostCheckLoading.value = false;
+      if (requestId === latestHostLockRequestId) {
+        state.lobbyHostLocked.value = false;
+        state.lobbyHostCheckLoading.value = false;
+      }
       return;
     }
 
@@ -270,16 +276,24 @@ export function useLobbyApi({
         { cache: "no-store" },
       );
       if (!response.ok) {
-        state.lobbyHostLocked.value = false;
+        if (requestId === latestHostLockRequestId) {
+          state.lobbyHostLocked.value = false;
+        }
         return;
       }
 
       const payload = await response.json();
-      state.lobbyHostLocked.value = Boolean(payload?.hostLocked);
+      if (requestId === latestHostLockRequestId) {
+        state.lobbyHostLocked.value = Boolean(payload?.hostLocked);
+      }
     } catch {
-      state.lobbyHostLocked.value = false;
+      if (requestId === latestHostLockRequestId) {
+        state.lobbyHostLocked.value = false;
+      }
     } finally {
-      state.lobbyHostCheckLoading.value = false;
+      if (requestId === latestHostLockRequestId) {
+        state.lobbyHostCheckLoading.value = false;
+      }
     }
   }
 
@@ -331,6 +345,30 @@ export function useLobbyApi({
     }
   }
 
+  async function releaseHostLockForGame(code) {
+    const normalized = normalizeGameCode(code);
+    const hostId = String(state.hostClientId.value || "").trim().toLowerCase();
+    if (!normalized || !hostId) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(
+        `${syncApiBaseUrl()}/api/games/${normalized}/host-lock`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hostId }),
+          keepalive: true,
+        },
+      );
+
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
   async function deleteSavedGame(gameCode) {
     const normalized = normalizeGameCode(gameCode);
     if (!normalized) {
@@ -363,6 +401,14 @@ export function useLobbyApi({
         return;
       }
 
+      if (response.status === 409) {
+        const payload = await response.json().catch(() => ({}));
+        showToast(String(payload?.error || "Spel kan niet verwijderd worden zolang host actief is."));
+        await loadRecentGames();
+        await refreshLobbyHostLock();
+        return;
+      }
+
       if (!response.ok && response.status !== 404) {
         showToast("Verwijderen van spel mislukt.");
         return;
@@ -390,5 +436,6 @@ export function useLobbyApi({
     refreshLobbyHostLock,
     isGameHostLocked,
     claimHostLockForGame,
+    releaseHostLockForGame,
   };
 }

@@ -9,12 +9,6 @@ export function useScoreRules({
   maxNegativeChoices,
   maxPositiveChoices,
 }) {
-  function isPlayerNameDisabled(name, currentPlayerId) {
-    return players.value.some(
-      (player) => player.id !== currentPlayerId && player.name === name,
-    );
-  }
-
   function getRoundChooserId(round) {
     return (
       players.value.find((player) => round.selections[player.id])?.id ?? null
@@ -342,31 +336,49 @@ export function useScoreRules({
     }
 
     if (round.kind === "negatief" && round.key.endsWith("-2")) {
-      return `${round.pointsPerUnit > 0 ? "+" : ""}${round.pointsPerUnit}`;
+      return `${round.pointsPerUnit > 0 ? "+" : ""}(${round.pointsPerUnit} pnt)`;
+    }
+
+    if (round.kind === "positief") {
+      const troefNumber = Number(String(round.key).replace("troef-", ""));
+
+      if (troefNumber === 4) {
+        return `Troef ${troefNumber}`;
+      }
+
+      if (troefNumber === 5) {
+        return `(+50 pnt) ${troefNumber}`;
+      }
+
+      if (Number.isFinite(troefNumber) && troefNumber > 0) {
+        return `${troefNumber}`;
+      }
     }
 
     return round.name;
   }
 
   function roundPrimaryLabelHtml(round) {
+    if (round.kind === "positief") {
+      const troefNumber = Number(String(round.key).replace("troef-", ""));
+
+      if (troefNumber === 1) {
+        return `<span class="grid w-full grid-cols-[1fr_auto] items-center"><span class="text-center">Troef</span><span class="text-right">${troefNumber}</span></span>`;
+      }
+
+      if (troefNumber === 2) {
+        return `<span class="grid w-full grid-cols-[1fr_auto] items-center"><span class="text-center">(+50pnt)</span><span class="text-right">${troefNumber}</span></span>`;
+      }
+
+      if (Number.isFinite(troefNumber) && troefNumber > 0) {
+        return `<span class="block text-right">${troefNumber}</span>`;
+      }
+    }
+
     return roundPrimaryLabel(round).replaceAll(
       "♥",
       '<span class="text-red-600">♥</span>',
     );
-  }
-
-  function roundSecondaryLabel(round) {
-    if (round.kind === "negatief" && round.key.endsWith("-1")) {
-      return `Max ${round.maxUnits} ${round.unit}`;
-    }
-
-    if (round.kind === "negatief" && round.key.endsWith("-2")) {
-      return `Max ${round.maxUnits} ${round.unit}`;
-    }
-
-    return `${round.pointsPerUnit > 0 ? "+" : ""}${round.pointsPerUnit} pnt per ${
-      round.unit
-    } | Max ${round.maxUnits}`;
   }
 
   function totalsForRounds(roundList) {
@@ -437,14 +449,18 @@ export function useScoreRules({
   }
 
   function pointsClass(value) {
-    return value >= 0 ? "text-emerald-700" : "text-rose-700";
+    if (value < 0) {
+      return "text-red-600";
+    }
+
+    if (value > 0) {
+      return "text-emerald-700";
+    }
+
+    return "text-indigo-700";
   }
 
   return {
-    isPlayerNameDisabled,
-    getRoundChooserId,
-    chosenRoundCount,
-    getNextChooserId,
     currentTurnPlayerId,
     isCurrentTurnPlayer,
     isPossibleChoiceRound,
@@ -467,19 +483,10 @@ export function useScoreRules({
     countOptionLabel,
     negativeRounds,
     positiveRounds,
-    isRoundPlayed,
-    isNegativeSecondRound,
-    canPlayNegativeSecondRound,
-    canPlayPositiveRound,
     isRoundEditable,
     isRowFull,
-    isGroupStart,
-    isGroupEnd,
     rowGroupClass,
-    roundPrimaryLabel,
     roundPrimaryLabelHtml,
-    roundSecondaryLabel,
-    totalsForRounds,
     negativeTotals,
     positiveTotals,
     grandTotals,
@@ -489,6 +496,5 @@ export function useScoreRules({
     openResultsModal,
     closeResultsModal,
     pointsClass,
-    chooserStats,
   };
 }

@@ -1,10 +1,16 @@
 export const MAX_NEGATIVE_CHOICES = 3;
 export const MAX_POSITIVE_CHOICES = 2;
+export const DEFAULT_PLAYER_NAMES = [
+  "Speler1",
+  "Speler2",
+  "Speler3",
+  "Speler4",
+];
 
 const negativeGames = [
   {
     key: "harten",
-    name: "♥♥",
+    name: "♥Harten♥",
     pointsPerUnit: -30,
     unit: "harten",
     maxUnits: 13,
@@ -104,12 +110,10 @@ function createDefaultPlayers(lobbyPlayersKey) {
     }
   }
 
-  return [
-    { id: createPlayerId(), name: "Jan" },
-    { id: createPlayerId(), name: "Willem" },
-    { id: createPlayerId(), name: "Gerard" },
-    { id: createPlayerId(), name: "Jeroen" },
-  ];
+  return DEFAULT_PLAYER_NAMES.map((name) => ({
+    id: createPlayerId(),
+    name,
+  }));
 }
 
 function createRoundsForPlayers(playerList) {
