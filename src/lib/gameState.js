@@ -1,10 +1,10 @@
 export const MAX_NEGATIVE_CHOICES = 3;
 export const MAX_POSITIVE_CHOICES = 2;
 export const DEFAULT_PLAYER_NAMES = [
-  "Speler1",
-  "Speler2",
-  "Speler3",
-  "Speler4",
+  "A",
+  "B",
+  "C",
+  "D",
 ];
 
 const negativeGames = [

@@ -372,7 +372,7 @@ function resolveLobbyPlayersForStart() {
 
   if (filledNames.length === 0) {
     const shouldUseDefaults = window.confirm(
-      `Er zijn nog geen spelers gekozen. Wil je doorgaan met ${DEFAULT_PLAYER_NAMES.join(", ")}?`,
+      `Er zijn nog geen spelers gekozen. Wil je ${DEFAULT_PLAYER_NAMES.join(", ")} gebruiken?`,
     );
 
     if (!shouldUseDefaults) {
