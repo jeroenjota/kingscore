@@ -98,6 +98,76 @@ let lastRemoteUpdatedAt = 0;
 let toastTimerId = null;
 let lastPushedStateSignature = "";
 const HOST_HEARTBEAT_INTERVAL_MS = 10_000;
+const SCORE_UNDO_LIMIT = 120;
+const scoreUndoStack = ref([]);
+const scoreRedoStack = ref([]);
+
+function cloneScoreState(state) {
+  return JSON.parse(JSON.stringify(state));
+}
+
+function captureUndoSnapshot() {
+  if (isViewerMode.value || !hasActiveGame.value) {
+    return;
+  }
+
+  scoreUndoStack.value.push(cloneScoreState(serializableState()));
+  scoreRedoStack.value = [];
+  if (scoreUndoStack.value.length > SCORE_UNDO_LIMIT) {
+    scoreUndoStack.value.shift();
+  }
+}
+
+function clearScoreHistory() {
+  scoreUndoStack.value = [];
+  scoreRedoStack.value = [];
+}
+
+function canUndoScoreInput() {
+  return !isViewerMode.value && scoreUndoStack.value.length > 0;
+}
+
+function undoScoreInput() {
+  if (!canUndoScoreInput()) {
+    return;
+  }
+
+  scoreRedoStack.value.push(cloneScoreState(serializableState()));
+  if (scoreRedoStack.value.length > SCORE_UNDO_LIMIT) {
+    scoreRedoStack.value.shift();
+  }
+
+  const snapshot = scoreUndoStack.value.pop();
+  if (!snapshot) {
+    return;
+  }
+
+  applyState(snapshot);
+  showToast("Laatste scorewijziging ongedaan gemaakt.");
+}
+
+function canRedoScoreInput() {
+  return !isViewerMode.value && scoreRedoStack.value.length > 0;
+}
+
+function redoScoreInput() {
+  if (!canRedoScoreInput()) {
+    return;
+  }
+
+  scoreUndoStack.value.push(cloneScoreState(serializableState()));
+  if (scoreUndoStack.value.length > SCORE_UNDO_LIMIT) {
+    scoreUndoStack.value.shift();
+  }
+
+  const snapshot = scoreRedoStack.value.pop();
+  if (!snapshot) {
+    return;
+  }
+
+  applyState(snapshot);
+  showToast("Scorewijziging opnieuw toegepast.");
+}
 
 function showToast(message) {
   toastMessage.value = String(message || "").trim();
@@ -190,6 +260,11 @@ function applyState(rawState) {
   rounds.value = normalized.rounds;
   turnStartPlayerId.value = normalized.turnStartPlayerId;
   isApplyingRemoteState = false;
+
+  if (!isViewerMode.value) {
+    activeCellKey.value = null;
+  }
+
   return true;
 }
 
@@ -404,6 +479,7 @@ async function openSavedGame(code, viewerMode) {
   }
 
   if (!viewerMode) {
+    clearScoreHistory();
     const lockClaimed = await claimHostLockForGame(normalized);
     if (!lockClaimed) {
       await loadRecentGames();
@@ -446,6 +522,7 @@ async function goToGame(viewerMode) {
   lobbySelectionError.value = "";
 
   if (!viewerMode) {
+    clearScoreHistory();
     const lockClaimed = await claimHostLockForGame(normalized);
     if (!lockClaimed) {
       await refreshLobbyHostLock();
@@ -502,6 +579,7 @@ async function openLobby() {
   }
 
   if (!isViewerMode.value) {
+    clearScoreHistory();
     stopHostLockHeartbeat();
     await releaseHostLock();
   }
@@ -702,6 +780,10 @@ watch(
   { deep: true },
 );
 
+watch(gameId, () => {
+  clearScoreHistory();
+});
+
 watch(shareViewerUrl, () => {
   void updateViewerQrCode();
   showViewerQrCode.value = false;
@@ -827,6 +909,7 @@ const {
   turnStartPlayerId,
   activeCellKey,
   isEditingDisabled,
+  onBeforeScoreChange: captureUndoSnapshot,
   maxNegativeChoices: MAX_NEGATIVE_CHOICES,
   maxPositiveChoices: MAX_POSITIVE_CHOICES,
 });
@@ -914,6 +997,20 @@ const {
           <span class="font-semibold">{{ isViewerMode ? "Speler/Kijker" : "Gastheer" }}</span>
         </p>
         <div v-if="!isViewerMode" class="flex items-center gap-2">
+          <button
+            type="button"
+            class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!canUndoScoreInput()"
+            @click="undoScoreInput">
+            Undo
+          </button>
+          <button
+            type="button"
+            class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!canRedoScoreInput()"
+            @click="redoScoreInput">
+            Redo
+          </button>
           <button
             type="button"
             class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50"

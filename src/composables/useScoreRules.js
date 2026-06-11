@@ -6,9 +6,16 @@ export function useScoreRules({
   turnStartPlayerId,
   activeCellKey,
   isEditingDisabled,
+  onBeforeScoreChange,
   maxNegativeChoices,
   maxPositiveChoices,
 }) {
+  function beforeScoreChange() {
+    if (typeof onBeforeScoreChange === "function") {
+      onBeforeScoreChange();
+    }
+  }
+
   function getRoundChooserId(round) {
     return (
       players.value.find((player) => round.selections[player.id])?.id ?? null
@@ -148,6 +155,11 @@ export function useScoreRules({
     }
 
     if (!checked) {
+      if (!round.selections[playerId]) {
+        return;
+      }
+
+      beforeScoreChange();
       round.selections[playerId] = false;
 
       if (chosenRoundCount() === 0) {
@@ -160,6 +172,13 @@ export function useScoreRules({
     if (!canChooseRound(round, playerId)) {
       return;
     }
+
+    const previousChooserId = getRoundChooserId(round);
+    if (previousChooserId === playerId) {
+      return;
+    }
+
+    beforeScoreChange();
 
     if (!turnStartPlayerId.value) {
       turnStartPlayerId.value = playerId;
@@ -203,10 +222,14 @@ export function useScoreRules({
     const numeric = Number(rawValue);
     const integerValue = Number.isFinite(numeric) ? Math.floor(numeric) : 0;
     const safeValue = Math.max(0, integerValue);
-    round.counts[playerId] = Math.min(
-      safeValue,
-      remainingForPlayer(round, playerId),
-    );
+    const nextValue = Math.min(safeValue, remainingForPlayer(round, playerId));
+
+    if (nextValue === Number(round.counts[playerId] || 0)) {
+      return;
+    }
+
+    beforeScoreChange();
+    round.counts[playerId] = nextValue;
   }
 
   function cellKey(round, playerId) {
