@@ -5,6 +5,10 @@ import LobbyNewGameSection from "./LobbyNewGameSection.vue";
 import LobbyRecentGamesSection from "./LobbyRecentGamesSection.vue";
 
 const props = defineProps({
+  apiState: {
+    type: Object,
+    required: true,
+  },
   adminState: {
     type: Object,
     required: true,
@@ -47,9 +51,32 @@ const emit = defineEmits([
     class="mx-auto mt-8 w-full max-w-lg rounded-xl border border-sky-600 bg-sky-50 p-2 shadow-sm">
 
     <div class="flex items-center justify-between gap-2">
-      <h1 class="mt-2 text-center text-2xl font-bold text-sky-900">
-        Kingen Score Lobby
-      </h1>
+      <div class="mt-2 flex items-center gap-2">
+        <h1 class="text-center text-2xl font-bold text-sky-900">
+          Kingen Score Lobby
+        </h1>
+        <span
+          v-if="props.apiState.lobbyAdminCodeValid"
+          class="rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+          :class="
+            props.apiState.lobbyApiStatusLoading
+              ? 'border-slate-300 bg-slate-100 text-slate-700'
+              : props.apiState.lobbyApiReachable
+                ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                : 'border-rose-300 bg-rose-100 text-rose-800'
+          "
+          role="status"
+          aria-live="polite">
+          API:
+          {{
+            props.apiState.lobbyApiStatusLoading
+              ? "check..."
+              : props.apiState.lobbyApiReachable
+                ? "online"
+                : "offline"
+          }}
+        </span>
+      </div>
         <button
           type="button"
           class="rounded border border-sky-300 bg-white px-2 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-50"

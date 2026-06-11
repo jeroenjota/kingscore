@@ -71,6 +71,10 @@ const recentGamesLoading = ref(false);
 const recentGamesError = ref("");
 const lobbyHostLocked = ref(false);
 const lobbyHostCheckLoading = ref(false);
+const lobbyApiReachable = ref(false);
+const lobbyApiStatusLoading = ref(false);
+const lobbyAdminCodeValid = ref(false);
+const lobbyAdminCodeValidationLoading = ref(false);
 const showHelpPage = ref(false);
 const lobbyNewPlayerName = ref("");
 const lobbyDeletePlayerName = ref("");
@@ -92,6 +96,9 @@ const isStartHostDisabled = computed(
 let syncTimerId = null;
 let syncPushTimeoutId = null;
 let hostLockTimerId = null;
+let lobbyApiStatusTimerId = null;
+let lobbyAdminValidationTimeoutId = null;
+let latestLobbyAdminValidationId = 0;
 let gameEvents = null;
 let isApplyingRemoteState = false;
 let lastRemoteUpdatedAt = 0;
@@ -426,6 +433,98 @@ async function releaseHostLock() {
   } catch {
     // Ignore release errors.
   }
+}
+
+async function refreshLobbyApiStatus() {
+  if (!lobbyAdminCodeValid.value) {
+    lobbyApiReachable.value = false;
+    lobbyApiStatusLoading.value = false;
+    return;
+  }
+
+  lobbyApiStatusLoading.value = true;
+
+  try {
+    const response = await fetch(`${syncApiBaseUrl()}/api/player-names`, {
+      cache: "no-store",
+    });
+    lobbyApiReachable.value = response.ok;
+  } catch {
+    lobbyApiReachable.value = false;
+  } finally {
+    lobbyApiStatusLoading.value = false;
+  }
+}
+
+async function refreshLobbyAdminCodeValidity() {
+  const code = String(lobbyAdminCode.value || "").trim();
+  const requestId = ++latestLobbyAdminValidationId;
+
+  if (!code) {
+    lobbyAdminCodeValidationLoading.value = false;
+    lobbyAdminCodeValid.value = false;
+    stopLobbyApiStatusPolling();
+    lobbyApiReachable.value = false;
+    lobbyApiStatusLoading.value = false;
+    return;
+  }
+
+  lobbyAdminCodeValidationLoading.value = true;
+
+  try {
+    // Use an invalid game id to validate admin code without deleting anything.
+    const response = await fetch(`${syncApiBaseUrl()}/api/games/ab`, {
+      method: "DELETE",
+      headers: {
+        "X-Admin-Code": code,
+      },
+    });
+
+    if (requestId !== latestLobbyAdminValidationId) {
+      return;
+    }
+
+    lobbyAdminCodeValid.value = response.status === 400;
+  } catch {
+    if (requestId !== latestLobbyAdminValidationId) {
+      return;
+    }
+
+    lobbyAdminCodeValid.value = false;
+  } finally {
+    if (requestId !== latestLobbyAdminValidationId) {
+      return;
+    }
+
+    lobbyAdminCodeValidationLoading.value = false;
+
+    if (!lobbyAdminCodeValid.value) {
+      stopLobbyApiStatusPolling();
+      lobbyApiReachable.value = false;
+      lobbyApiStatusLoading.value = false;
+      return;
+    }
+
+    startLobbyApiStatusPolling();
+  }
+}
+
+function stopLobbyApiStatusPolling() {
+  if (!lobbyApiStatusTimerId) {
+    return;
+  }
+
+  clearInterval(lobbyApiStatusTimerId);
+  lobbyApiStatusTimerId = null;
+}
+
+function startLobbyApiStatusPolling() {
+  stopLobbyApiStatusPolling();
+  void refreshLobbyApiStatus();
+
+  lobbyApiStatusTimerId = setInterval(() => {
+    void refreshLobbyApiStatus();
+  }, 10_000);
 }
 
 
@@ -805,6 +904,29 @@ watch(lobbyGameCode, () => {
 
 watch(lobbyAdminCode, (value) => {
   persistLobbyAdminCode(value);
+
+  lobbyAdminCodeValid.value = false;
+  lobbyApiReachable.value = false;
+  lobbyApiStatusLoading.value = false;
+
+  if (lobbyAdminValidationTimeoutId) {
+    clearTimeout(lobbyAdminValidationTimeoutId);
+    lobbyAdminValidationTimeoutId = null;
+  }
+
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    latestLobbyAdminValidationId += 1;
+    lobbyAdminCodeValidationLoading.value = false;
+    stopLobbyApiStatusPolling();
+    return;
+  }
+
+  lobbyAdminCodeValidationLoading.value = true;
+  lobbyAdminValidationTimeoutId = setTimeout(() => {
+    lobbyAdminValidationTimeoutId = null;
+    void refreshLobbyAdminCodeValidity();
+  }, 300);
 });
 
 watch(playerNameOptions, () => {
@@ -825,6 +947,7 @@ onMounted(async () => {
 
   if (!hasActiveGame.value) {
     syncStatus.value = "Lobby";
+    await refreshLobbyAdminCodeValidity();
     await refreshLobbyHostLock();
     await loadRecentGames();
     return;
@@ -858,6 +981,13 @@ onBeforeUnmount(() => {
   if (syncPushTimeoutId) {
     clearTimeout(syncPushTimeoutId);
   }
+
+  if (lobbyAdminValidationTimeoutId) {
+    clearTimeout(lobbyAdminValidationTimeoutId);
+    lobbyAdminValidationTimeoutId = null;
+  }
+
+  stopLobbyApiStatusPolling();
 
   stopHostLockHeartbeat();
   if (!isViewerMode.value) {
@@ -930,6 +1060,12 @@ const {
       v-if="!hasActiveGame && !showHelpPage"
       :admin-state="{
         lobbyAdminCode,
+      }"
+      :api-state="{
+        lobbyAdminCodeValid,
+        lobbyAdminCodeValidationLoading,
+        lobbyApiReachable,
+        lobbyApiStatusLoading,
       }"
       :players-state="{
         playerNameOptions,
