@@ -43,6 +43,7 @@ const emit = defineEmits([
   "delete-saved-game",
   "open-help-page",
   "reset-host-session",
+  "force-release-host-lock",
 ]);
 </script>
 
@@ -57,24 +58,41 @@ const emit = defineEmits([
         </h1>
         <span
           v-if="props.apiState.lobbyAdminCodeValid"
-          class="rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+          class="rounded-full border px-1.5 py-0.5"
           :class="
             props.apiState.lobbyApiStatusLoading
-              ? 'border-slate-300 bg-slate-100 text-slate-700'
+              ? 'border-slate-300 bg-slate-100 text-slate-500'
               : props.apiState.lobbyApiReachable
-                ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
-                : 'border-rose-300 bg-rose-100 text-rose-800'
+                ? 'border-emerald-300 bg-emerald-100 text-emerald-700'
+                : 'border-rose-300 bg-rose-100 text-rose-600'
           "
           role="status"
           aria-live="polite">
-          API:
-          {{
-            props.apiState.lobbyApiStatusLoading
-              ? "check..."
-              : props.apiState.lobbyApiReachable
-                ? "online"
-                : "offline"
-          }}
+          <svg
+            v-if="props.apiState.lobbyApiStatusLoading"
+            class="h-3.5 w-3.5 animate-spin"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1M5.6 18.4l2.1-2.1m8.6-8.6 2.1-2.1" />
+          </svg>
+          <svg
+            v-else-if="props.apiState.lobbyApiReachable"
+            class="h-3.5 w-3.5"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+            title="API online">
+            <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z" />
+          </svg>
+          <svg
+            v-else
+            class="h-3.5 w-3.5"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+            title="API offline">
+            <path d="M22.99 9C19.15 5.16 13.8 3.76 8.84 4.78L11 6.94c3.23-.35 6.57.6 9.01 3.03l1.98-1.97zM13 11.17l3.56 3.56c-.18-.2-.35-.4-.56-.56L13 11.17zM1.09 1.09 0 2.18 2.85 5c-.58.51-1.14 1.05-1.63 1.63L3.2 8.6C3.85 7.81 4.6 7.08 5.42 6.44L7.2 8.22C6.22 8.99 5.36 9.89 4.62 10.9L6.6 12.88c.98-1.29 2.19-2.36 3.54-3.16l5.85 5.85c-1.35.8-2.56 1.87-3.54 3.16l1.99 1.98C15.81 19.5 17.02 18.43 18 17.14l1.07 1.07 1.41-1.41 2.51 2.51 1.09-1.09L1.09 1.09zM12 22l3-3c-1.65-1.66-4.34-1.66-6 0l3 3z" />
+          </svg>
         </span>
       </div>
         <button
@@ -116,7 +134,8 @@ const emit = defineEmits([
       @update:lobby-player-at="({ index, value }) => emit('update:lobbyPlayerAt', { index, value })"
       @update:lobby-game-code="(value) => emit('update:lobbyGameCode', value)"
       @start-host="emit('start-host')"
-      @reset-host-session="emit('reset-host-session')" />
+      @reset-host-session="emit('reset-host-session')"
+      @force-release-host-lock="emit('force-release-host-lock')" />
 
     <LobbyRecentGamesSection
       :recent-games-loading="props.recentGamesState.recentGamesLoading"

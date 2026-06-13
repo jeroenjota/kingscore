@@ -423,6 +423,47 @@ export function useLobbyApi({
     }
   }
 
+  async function forceReleaseHostLock(code) {
+    const normalized = normalizeGameCode(code);
+    const providedCode = String(state.lobbyAdminCode.value || "").trim();
+
+    if (!normalized || !providedCode) {
+      return false;
+    }
+
+    try {
+      const response = await fetch(
+        `${syncApiBaseUrl()}/api/games/${normalized}/host-lock`,
+        {
+          method: "DELETE",
+          headers: {
+            "X-Admin-Code": providedCode,
+          },
+        },
+      );
+
+      if (response.status === 403) {
+        const payload = await response.json().catch(() => ({}));
+        showToast(String(payload?.error || "Ongeldige beheerderscode."));
+        state.lobbyAdminCode.value = "";
+        clearPersistedLobbyAdminCode();
+        return false;
+      }
+
+      if (!response.ok) {
+        showToast("Kon host lock niet forceren.");
+        return false;
+      }
+
+      showToast("Host lock verwijderd.");
+      persistLobbyAdminCode(providedCode);
+      return true;
+    } catch {
+      showToast("Kon host lock niet forceren.");
+      return false;
+    }
+  }
+
   return {
     syncApiBaseUrl,
     clearPersistedLobbyAdminCode,
@@ -437,5 +478,6 @@ export function useLobbyApi({
     isGameHostLocked,
     claimHostLockForGame,
     releaseHostLockForGame,
+    forceReleaseHostLock,
   };
 }

@@ -205,6 +205,7 @@ const {
   refreshLobbyHostLock,
   claimHostLockForGame,
   releaseHostLockForGame,
+  forceReleaseHostLock,
 } = useLobbyApi({
   lobbyAdminCodeKey: LOBBY_ADMIN_CODE_KEY,
   lobbyAdminCodeTtlMs: LOBBY_ADMIN_CODE_TTL_MS,
@@ -672,6 +673,31 @@ async function resetHostSessionFromLobby() {
   showToast("Lokale host-instelling gereset.");
 }
 
+async function forceReleaseHostLockFromLobby() {
+  const normalizedCode = normalizeGameCode(lobbyGameCode.value);
+  if (!normalizedCode) {
+    showToast("Kies eerst een gamecode.");
+    return;
+  }
+
+  if (!lobbyAdminCode.value) {
+    showToast("Vul eerst je beheerderscode in.");
+    return;
+  }
+
+  if (!window.confirm(`Weet je zeker dat je de host lock voor gamecode "${normalizedCode}" wilt forceren?`)) {
+    return;
+  }
+
+  const success = await forceReleaseHostLock(normalizedCode);
+  if (success) {
+    window.sessionStorage.removeItem("kingscore-host-id-v1");
+    hostClientId.value = "";
+    await refreshLobbyHostLock();
+    await loadRecentGames();
+  }
+}
+
 async function openLobby() {
   if (typeof window === "undefined") {
     return;
@@ -1108,6 +1134,7 @@ const {
       @delete-saved-game="(gameId) => deleteSavedGame(gameId)"
       @open-help-page="openHelpPage"
       @reset-host-session="resetHostSessionFromLobby"
+      @force-release-host-lock="forceReleaseHostLockFromLobby"
     />
 
     <HelpPage
@@ -1128,28 +1155,51 @@ const {
             Uitslag
           </button>
           <span v-else>Game</span>
-          : <span class="font-bold uppercase">{{ gameId }}</span> | Stat:
-          <span class="font-semibold">{{ syncStatus }}</span> | Rol:
+          : <span class="font-bold uppercase">{{ gameId }}</span> |
+          <svg
+            v-if="syncStatus === 'Online'"
+            class="inline h-4 w-4 text-emerald-600"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+            title="Verbonden">
+            <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z" />
+          </svg>
+          <svg
+            v-else
+            class="inline h-4 w-4 text-rose-500"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+            title="Verbroken">
+            <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z" />
+          </svg>
+          |
           <span class="font-semibold">{{ isViewerMode ? "Speler/Kijker" : "Gastheer" }}</span>
         </p>
-        <div v-if="!isViewerMode" class="flex items-center gap-2">
+        <div v-if="!isViewerMode" class="flex items-center gap-1">
           <button
             type="button"
-            class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+            class="rounded border border-sky-300 bg-white px-1.5 py-0.5 text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="!canUndoScoreInput()"
+            title="Ongedaan maken"
             @click="undoScoreInput">
-            Undo
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+            </svg>
           </button>
           <button
             type="button"
-            class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
+            class="rounded border border-sky-300 bg-white px-1.5 py-0.5 text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="!canRedoScoreInput()"
+            title="Opnieuw toepassen"
             @click="redoScoreInput">
-            Redo
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 15 21 9m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3" />
+            </svg>
           </button>
           <button
             type="button"
             class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50"
+            title="Naar startscherm"
             @click="openLobby">
             Lobby
           </button>
@@ -1157,6 +1207,7 @@ const {
             v-if="!isViewerMode"
             type="button"
             class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50"
+            title="QR-code voor kijkers"
             @click="toggleViewerQrCode">
             {{ showViewerQrCode ? "<=" : "QR" }}
           </button>
