@@ -8,22 +8,89 @@ export function useLobbyApi({
   getOrCreateHostClientId,
 }) {
   let latestHostLockRequestId = 0;
+  let resolvedApiBaseUrl = "";
 
-  function syncApiBaseUrl() {
+  function setResolvedApiBaseUrl(value) {
+    resolvedApiBaseUrl = value;
+
+    if (state.apiBaseUrl) {
+      state.apiBaseUrl.value = value;
+    }
+  }
+
+  function getApiBaseCandidates() {
     if (typeof window === "undefined") {
-      return "";
+      return [""];
     }
 
     if (import.meta.env.VITE_SYNC_API_URL) {
-      return import.meta.env.VITE_SYNC_API_URL;
+      return [String(import.meta.env.VITE_SYNC_API_URL).replace(/\/$/, "")];
     }
 
-    const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-    if (isLocalHost) {
-      return `${window.location.protocol}//${window.location.hostname}:54321`;
+    // In dev (including mobile via LAN IP), target the sibling local API port.
+    if (import.meta.env.DEV) {
+      return [`${window.location.protocol}//${window.location.hostname}:54321`];
     }
 
-    return `${window.location.origin}/laurierboom/api`;
+    // Production deploy serves Kingscore under /kingscore and the API under /laurierboom/api.
+    return [`${window.location.origin}/laurierboom/api`];
+  }
+
+  function syncApiBaseUrl() {
+    if (resolvedApiBaseUrl) {
+      return resolvedApiBaseUrl;
+    }
+
+    const fallback = getApiBaseCandidates()[0] || "";
+    if (state.apiBaseUrl && !state.apiBaseUrl.value) {
+      state.apiBaseUrl.value = fallback;
+    }
+    return fallback;
+  }
+
+  function buildApiUrl(path, baseUrl = syncApiBaseUrl()) {
+    const normalizedBase = String(baseUrl || "").replace(/\/$/, "");
+    const normalizedPath = String(path || "").startsWith("/") ? String(path) : `/${String(path || "")}`;
+    return `${normalizedBase}${normalizedPath}`;
+  }
+
+  async function fetchLobbyApi(path, options) {
+    const candidates = [...new Set(getApiBaseCandidates().filter(Boolean))];
+    let lastError = null;
+    let fallbackNotFoundResponse = null;
+
+    for (const candidate of candidates) {
+      try {
+        const response = await fetch(buildApiUrl(path, candidate), options);
+        const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+
+        if (response.ok && contentType.includes("text/html")) {
+          continue;
+        }
+
+        if (response.status === 404) {
+          if (!fallbackNotFoundResponse) {
+            fallbackNotFoundResponse = response;
+          }
+          continue;
+        }
+
+        setResolvedApiBaseUrl(candidate);
+        return response;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
+
+    if (fallbackNotFoundResponse) {
+      return fallbackNotFoundResponse;
+    }
+
+    throw new Error(`No API route matched for ${path}`);
   }
 
   function clearPersistedLobbyAdminCode() {
@@ -85,7 +152,7 @@ export function useLobbyApi({
 
   async function loadPlayerNameOptions() {
     try {
-      const response = await fetch(`${syncApiBaseUrl()}/api/player-names`);
+      const response = await fetchLobbyApi("/api/player-names");
       if (!response.ok) {
         return;
       }
@@ -117,7 +184,7 @@ export function useLobbyApi({
     state.lobbyPlayerMessage.value = "";
 
     try {
-      const response = await fetch(`${syncApiBaseUrl()}/api/player-names`, {
+      const response = await fetchLobbyApi("/api/player-names", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -172,7 +239,7 @@ export function useLobbyApi({
     state.lobbyPlayerError.value = "";
 
     try {
-      const response = await fetch(`${syncApiBaseUrl()}/api/player-names/${encodeURIComponent(name)}`, {
+      const response = await fetchLobbyApi(`/api/player-names/${encodeURIComponent(name)}`, {
         method: "DELETE",
         headers: {
           "X-Admin-Code": providedCode,
@@ -229,7 +296,7 @@ export function useLobbyApi({
     state.recentGamesError.value = "";
 
     try {
-      const response = await fetch(`${syncApiBaseUrl()}/api/games`, {
+      const response = await fetchLobbyApi("/api/games", {
         cache: "no-store",
       });
       if (!response.ok) {
@@ -271,10 +338,9 @@ export function useLobbyApi({
     state.lobbyHostCheckLoading.value = true;
 
     try {
-      const response = await fetch(
-        `${syncApiBaseUrl()}/api/games/${normalized}/host-lock`,
-        { cache: "no-store" },
-      );
+      const response = await fetchLobbyApi(`/api/games/${normalized}/host-lock`, {
+        cache: "no-store",
+      });
       if (!response.ok) {
         if (requestId === latestHostLockRequestId) {
           state.lobbyHostLocked.value = false;
@@ -304,10 +370,9 @@ export function useLobbyApi({
     }
 
     try {
-      const response = await fetch(
-        `${syncApiBaseUrl()}/api/games/${normalized}/host-lock`,
-        { cache: "no-store" },
-      );
+      const response = await fetchLobbyApi(`/api/games/${normalized}/host-lock`, {
+        cache: "no-store",
+      });
       if (!response.ok) {
         return false;
       }
@@ -322,7 +387,7 @@ export function useLobbyApi({
   async function claimHostLockForGame(code) {
     const normalized = normalizeGameCode(code);
     if (!normalized) {
-      return false;
+      return { ok: false, reason: "invalid" };
     }
 
     if (!state.hostClientId.value) {
@@ -330,18 +395,23 @@ export function useLobbyApi({
     }
 
     try {
-      const response = await fetch(
-        `${syncApiBaseUrl()}/api/games/${normalized}/host-lock`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hostId: state.hostClientId.value }),
-        },
-      );
+      const response = await fetchLobbyApi(`/api/games/${normalized}/host-lock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostId: state.hostClientId.value }),
+      });
 
-      return response.ok;
+      if (response.ok) {
+        return { ok: true, reason: "ok" };
+      }
+
+      if (response.status === 409) {
+        return { ok: false, reason: "locked" };
+      }
+
+      return { ok: false, reason: "api" };
     } catch {
-      return false;
+      return { ok: false, reason: "api" };
     }
   }
 
@@ -353,15 +423,12 @@ export function useLobbyApi({
     }
 
     try {
-      const response = await fetch(
-        `${syncApiBaseUrl()}/api/games/${normalized}/host-lock`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hostId }),
-          keepalive: true,
-        },
-      );
+      const response = await fetchLobbyApi(`/api/games/${normalized}/host-lock`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hostId }),
+        keepalive: true,
+      });
 
       return response.ok;
     } catch {
@@ -386,7 +453,7 @@ export function useLobbyApi({
     }
 
     try {
-      const response = await fetch(`${syncApiBaseUrl()}/api/games/${normalized}`, {
+      const response = await fetchLobbyApi(`/api/games/${normalized}`, {
         method: "DELETE",
         headers: {
           "X-Admin-Code": providedCode,
@@ -432,15 +499,12 @@ export function useLobbyApi({
     }
 
     try {
-      const response = await fetch(
-        `${syncApiBaseUrl()}/api/games/${normalized}/host-lock`,
-        {
-          method: "DELETE",
-          headers: {
-            "X-Admin-Code": providedCode,
-          },
+      const response = await fetchLobbyApi(`/api/games/${normalized}/host-lock`, {
+        method: "DELETE",
+        headers: {
+          "X-Admin-Code": providedCode,
         },
-      );
+      });
 
       if (response.status === 403) {
         const payload = await response.json().catch(() => ({}));
@@ -479,5 +543,7 @@ export function useLobbyApi({
     claimHostLockForGame,
     releaseHostLockForGame,
     forceReleaseHostLock,
+    fetchLobbyApi,
+    buildApiUrl,
   };
 }

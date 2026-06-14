@@ -102,6 +102,12 @@ const emit = defineEmits([
           Help & regels
         </button>
     </div>
+    <p
+      v-if="props.apiState.lobbyApiBaseUrl"
+      class="mt-1 break-all text-[11px] text-sky-700"
+    >
+      API: <span class="font-mono">{{ props.apiState.lobbyApiBaseUrl }}</span>
+    </p>
     <LobbyAdminSection
       :lobby-admin-code="props.adminState.lobbyAdminCode"
       @update:lobby-admin-code="(value) => emit('update:lobbyAdminCode', value)" />

@@ -73,6 +73,7 @@ const lobbyHostLocked = ref(false);
 const lobbyHostCheckLoading = ref(false);
 const lobbyApiReachable = ref(false);
 const lobbyApiStatusLoading = ref(false);
+const lobbyApiBaseUrl = ref("");
 const lobbyAdminCodeValid = ref(false);
 const lobbyAdminCodeValidationLoading = ref(false);
 const showHelpPage = ref(false);
@@ -206,6 +207,8 @@ const {
   claimHostLockForGame,
   releaseHostLockForGame,
   forceReleaseHostLock,
+  fetchLobbyApi,
+  buildApiUrl,
 } = useLobbyApi({
   lobbyAdminCodeKey: LOBBY_ADMIN_CODE_KEY,
   lobbyAdminCodeTtlMs: LOBBY_ADMIN_CODE_TTL_MS,
@@ -224,6 +227,7 @@ const {
     recentGames,
     recentGamesLoading,
     recentGamesError,
+    apiBaseUrl: lobbyApiBaseUrl,
     lobbyHostLocked,
     lobbyHostCheckLoading,
     lobbyGameCode,
@@ -375,31 +379,28 @@ function getOrCreateHostClientId() {
 
 async function claimHostLock() {
   if (!gameId.value || !hostClientId.value) {
-    return false;
+    return { ok: false, reason: "invalid" };
   }
 
   try {
-    const response = await fetch(
-      `${syncApiBaseUrl()}/api/games/${gameId.value}/host-lock`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hostId: hostClientId.value }),
-      },
-    );
+    const response = await fetchLobbyApi(`/api/games/${gameId.value}/host-lock`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostId: hostClientId.value }),
+    });
 
     if (response.ok) {
-      return true;
+      return { ok: true, reason: "ok" };
     }
 
     if (response.status === 409) {
-      return false;
+      return { ok: false, reason: "locked" };
     }
   } catch {
     // Ignore and allow fallback behavior below.
   }
 
-  return false;
+  return { ok: false, reason: "api" };
 }
 
 function stopHostLockHeartbeat() {
@@ -425,7 +426,7 @@ async function releaseHostLock() {
   }
 
   try {
-    await fetch(`${syncApiBaseUrl()}/api/games/${gameId.value}/host-lock`, {
+    await fetchLobbyApi(`/api/games/${gameId.value}/host-lock`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ hostId: hostClientId.value }),
@@ -446,7 +447,7 @@ async function refreshLobbyApiStatus() {
   lobbyApiStatusLoading.value = true;
 
   try {
-    const response = await fetch(`${syncApiBaseUrl()}/api/player-names`, {
+    const response = await fetchLobbyApi("/api/player-names", {
       cache: "no-store",
     });
     lobbyApiReachable.value = response.ok;
@@ -474,7 +475,7 @@ async function refreshLobbyAdminCodeValidity() {
 
   try {
     // Use an invalid game id to validate admin code without deleting anything.
-    const response = await fetch(`${syncApiBaseUrl()}/api/games/ab`, {
+    const response = await fetchLobbyApi("/api/games/ab", {
       method: "DELETE",
       headers: {
         "X-Admin-Code": code,
@@ -580,10 +581,14 @@ async function openSavedGame(code, viewerMode) {
 
   if (!viewerMode) {
     clearScoreHistory();
-    const lockClaimed = await claimHostLockForGame(normalized);
-    if (!lockClaimed) {
+    const lockClaim = await claimHostLockForGame(normalized);
+    if (!lockClaim.ok) {
       await loadRecentGames();
-      showToast("Host is al actief voor deze gamecode.");
+      showToast(
+        lockClaim.reason === "locked"
+          ? "Host is al actief voor deze gamecode."
+          : "Kan host-lock niet bereiken. Controleer API/proxy.",
+      );
       return;
     }
   }
@@ -623,11 +628,15 @@ async function goToGame(viewerMode) {
 
   if (!viewerMode) {
     clearScoreHistory();
-    const lockClaimed = await claimHostLockForGame(normalized);
-    if (!lockClaimed) {
+    const lockClaim = await claimHostLockForGame(normalized);
+    if (!lockClaim.ok) {
       await refreshLobbyHostLock();
       await loadRecentGames();
-      showToast("Host is al actief voor deze gamecode.");
+      showToast(
+        lockClaim.reason === "locked"
+          ? "Host is al actief voor deze gamecode."
+          : "Kan host-lock niet bereiken. Controleer API/proxy.",
+      );
       return;
     }
   }
@@ -764,10 +773,9 @@ async function pullRemoteState() {
   }
 
   try {
-    const response = await fetch(
-      `${syncApiBaseUrl()}/api/games/${gameId.value}/state`,
-      { cache: "no-store" },
-    );
+    const response = await fetchLobbyApi(`/api/games/${gameId.value}/state`, {
+      cache: "no-store",
+    });
     if (!response.ok) {
       syncStatus.value = "Lokaal";
       return;
@@ -801,14 +809,11 @@ async function pushRemoteState() {
   }
 
   try {
-    const response = await fetch(
-      `${syncApiBaseUrl()}/api/games/${gameId.value}/state`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state: statePayload }),
-      },
-    );
+    const response = await fetchLobbyApi(`/api/games/${gameId.value}/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: statePayload }),
+    });
 
     if (!response.ok) {
       syncStatus.value = "Lokaal";
@@ -860,7 +865,7 @@ function startRealtimeSync() {
 
   stopRealtimeSync();
 
-  const eventsUrl = `${syncApiBaseUrl()}/api/games/${gameId.value}/events`;
+  const eventsUrl = buildApiUrl(`/api/games/${gameId.value}/events`, syncApiBaseUrl());
   gameEvents = new EventSource(eventsUrl);
 
   gameEvents.onopen = () => {
@@ -983,10 +988,10 @@ onMounted(async () => {
 
   if (!isViewerMode.value) {
     hostClientId.value = getOrCreateHostClientId();
-    const hostClaimed = await claimHostLock();
-    if (!hostClaimed) {
+    const hostClaim = await claimHostLock();
+    if (!hostClaim.ok) {
       isViewerMode.value = true;
-      syncStatus.value = "Host bezet";
+      syncStatus.value = hostClaim.reason === "locked" ? "Host bezet" : "API offline";
     } else {
       startHostLockHeartbeat();
     }
@@ -1092,6 +1097,7 @@ const {
         lobbyAdminCodeValidationLoading,
         lobbyApiReachable,
         lobbyApiStatusLoading,
+        lobbyApiBaseUrl,
       }"
       :players-state="{
         playerNameOptions,
