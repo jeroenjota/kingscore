@@ -1,13 +1,11 @@
-export const MAX_NEGATIVE_CHOICES = 3;
-export const MAX_POSITIVE_CHOICES = 2;
-export const DEFAULT_PLAYER_NAMES = [
-  "A",
-  "B",
-  "C",
-  "D",
+export const DEFAULT_VARIANT_KEY = "four";
+
+export const VARIANT_OPTIONS = [
+  { key: "four", label: "4 spelers", playerCount: 4 },
+  { key: "three", label: "3 spelers", playerCount: 3 },
 ];
 
-const negativeGames = [
+const FOUR_PLAYER_NEGATIVE_GAMES = [
   {
     key: "harten",
     name: "♥Harten♥",
@@ -52,7 +50,7 @@ const negativeGames = [
   },
 ];
 
-const positiveGames = Array.from({ length: 8 }, (_, index) => ({
+const FOUR_PLAYER_POSITIVE_GAMES = Array.from({ length: 8 }, (_, index) => ({
   key: `troef-${index + 1}`,
   name: `Troef ${index + 1}`,
   pointsPerUnit: 50,
@@ -60,17 +58,109 @@ const positiveGames = Array.from({ length: 8 }, (_, index) => ({
   maxUnits: 13,
 }));
 
-export const roundTemplates = [
-  ...negativeGames.flatMap((game) => [
-    { ...game, key: `${game.key}-1`, kind: "negatief", copyLabel: "A" },
-    { ...game, key: `${game.key}-2`, kind: "negatief", copyLabel: "B" },
-  ]),
-  ...positiveGames.map((game) => ({
-    ...game,
-    kind: "positief",
-    copyLabel: "",
-  })),
+const THREE_PLAYER_NEGATIVE_GAMES = [
+  {
+    key: "harten",
+    name: "♥Harten♥",
+    pointsPerUnit: -50,
+    unit: "harten",
+    maxUnits: 13,
+  },
+  {
+    key: "slagen",
+    name: "Slagen",
+    pointsPerUnit: -40,
+    unit: "slag",
+    maxUnits: 17,
+  },
+  {
+    key: "laatste-twee",
+    name: "Laatste 2",
+    pointsPerUnit: -145,
+    unit: "slag",
+    maxUnits: 2,
+  },
+  {
+    key: "mannen",
+    name: "Mannen",
+    pointsPerUnit: -80,
+    unit: "kaart",
+    maxUnits: 8,
+  },
+  {
+    key: "vrouwen",
+    name: "Vrouwen",
+    pointsPerUnit: -100,
+    unit: "kaart",
+    maxUnits: 4,
+  },
+  {
+    key: "hartenheer",
+    name: "♥ Heer",
+    pointsPerUnit: -400,
+    unit: "keer",
+    maxUnits: 1,
+  },
 ];
+
+const THREE_PLAYER_POSITIVE_GAMES = Array.from({ length: 9 }, (_, index) => ({
+  key: `troef-${index + 1}`,
+  name: `Troef ${index + 1}`,
+  pointsPerUnit: 40,
+  unit: "slag",
+  maxUnits: 17,
+}));
+
+const VARIANT_CONFIGS = {
+  four: {
+    playerCount: 4,
+    maxNegativeChoices: 3,
+    maxPositiveChoices: 2,
+    defaultPlayerNames: ["A", "B", "C", "D"],
+    negativeGames: FOUR_PLAYER_NEGATIVE_GAMES,
+    positiveGames: FOUR_PLAYER_POSITIVE_GAMES,
+  },
+  three: {
+    playerCount: 3,
+    maxNegativeChoices: 4,
+    maxPositiveChoices: 3,
+    defaultPlayerNames: ["A", "B", "C"],
+    negativeGames: THREE_PLAYER_NEGATIVE_GAMES,
+    positiveGames: THREE_PLAYER_POSITIVE_GAMES,
+  },
+};
+
+export function getVariantConfig(variantKey) {
+  return VARIANT_CONFIGS[variantKey] || VARIANT_CONFIGS[DEFAULT_VARIANT_KEY];
+}
+
+export function getDefaultPlayerNamesForVariant(variantKey) {
+  return [...getVariantConfig(variantKey).defaultPlayerNames];
+}
+
+export function getMaxNegativeChoicesForVariant(variantKey) {
+  return getVariantConfig(variantKey).maxNegativeChoices;
+}
+
+export function getMaxPositiveChoicesForVariant(variantKey) {
+  return getVariantConfig(variantKey).maxPositiveChoices;
+}
+
+export function buildRoundTemplatesForVariant(variantKey) {
+  const config = getVariantConfig(variantKey);
+
+  return [
+    ...config.negativeGames.flatMap((game) => [
+      { ...game, key: `${game.key}-1`, kind: "negatief", copyLabel: "A" },
+      { ...game, key: `${game.key}-2`, kind: "negatief", copyLabel: "B" },
+    ]),
+    ...config.positiveGames.map((game) => ({
+      ...game,
+      kind: "positief",
+      copyLabel: "",
+    })),
+  ];
+}
 
 export function detectInitialGameId() {
   if (typeof window === "undefined") {
@@ -92,7 +182,23 @@ function createPlayerId() {
   return `player-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function createDefaultPlayers(lobbyPlayersKey) {
+function getStoredVariantKey(lobbyVariantKey) {
+  if (typeof window === "undefined") {
+    return DEFAULT_VARIANT_KEY;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(lobbyVariantKey);
+    const parsed = String(raw || "").trim();
+    return parsed && VARIANT_CONFIGS[parsed] ? parsed : DEFAULT_VARIANT_KEY;
+  } catch {
+    return DEFAULT_VARIANT_KEY;
+  }
+}
+
+function createDefaultPlayers(lobbyPlayersKey, variantKey) {
+  const config = getVariantConfig(variantKey);
+
   if (typeof window !== "undefined") {
     try {
       const raw = window.localStorage.getItem(lobbyPlayersKey);
@@ -102,7 +208,7 @@ function createDefaultPlayers(lobbyPlayersKey) {
         : [];
       const uniqueNames = [...new Set(names)];
 
-      if (uniqueNames.length === 4) {
+      if (uniqueNames.length === config.playerCount) {
         return uniqueNames.map((name) => ({ id: createPlayerId(), name }));
       }
     } catch {
@@ -110,13 +216,15 @@ function createDefaultPlayers(lobbyPlayersKey) {
     }
   }
 
-  return DEFAULT_PLAYER_NAMES.map((name) => ({
+  return config.defaultPlayerNames.map((name) => ({
     id: createPlayerId(),
     name,
   }));
 }
 
-function createRoundsForPlayers(playerList) {
+function createRoundsForPlayers(playerList, variantKey) {
+  const roundTemplates = buildRoundTemplatesForVariant(variantKey);
+
   return roundTemplates.map((template, index) => ({
     ...template,
     roundNumber: index + 1,
@@ -127,13 +235,28 @@ function createRoundsForPlayers(playerList) {
   }));
 }
 
-function createDefaultState(lobbyPlayersKey) {
-  const defaultPlayers = createDefaultPlayers(lobbyPlayersKey);
+function createDefaultState(lobbyPlayersKey, lobbyVariantKey) {
+  const variant = getStoredVariantKey(lobbyVariantKey);
+  const defaultPlayers = createDefaultPlayers(lobbyPlayersKey, variant);
+
   return {
     players: defaultPlayers,
-    rounds: createRoundsForPlayers(defaultPlayers),
+    rounds: createRoundsForPlayers(defaultPlayers, variant),
     turnStartPlayerId: null,
+    variant,
   };
+}
+
+function getVariantKeyForPlayers(players) {
+  if (Array.isArray(players) && players.length === 3) {
+    return "three";
+  }
+
+  if (Array.isArray(players) && players.length === 4) {
+    return "four";
+  }
+
+  return DEFAULT_VARIANT_KEY;
 }
 
 export function normalizeState(rawState) {
@@ -145,10 +268,17 @@ export function normalizeState(rawState) {
       typeof player?.id === "string" && typeof player?.name === "string",
   );
 
-  if (validPlayers.length !== 4) {
+  const variant =
+    rawState?.variant && VARIANT_CONFIGS[rawState.variant]
+      ? rawState.variant
+      : getVariantKeyForPlayers(validPlayers);
+
+  const expectedPlayerCount = getVariantConfig(variant).playerCount;
+  if (validPlayers.length !== expectedPlayerCount) {
     return null;
   }
 
+  const roundTemplates = buildRoundTemplatesForVariant(variant);
   const loadedRoundsByKey = new Map(
     Array.isArray(rawState?.rounds)
       ? rawState.rounds.map((round) => [round?.key, round])
@@ -192,11 +322,16 @@ export function normalizeState(rawState) {
     players: validPlayers,
     rounds: hydratedRounds,
     turnStartPlayerId: validTurnStartPlayerId,
+    variant,
   };
 }
 
-export function loadPersistedState({ storageKey, lobbyPlayersKey }) {
-  const defaultState = createDefaultState(lobbyPlayersKey);
+export function loadPersistedState({
+  storageKey,
+  lobbyPlayersKey,
+  lobbyVariantKey,
+}) {
+  const defaultState = createDefaultState(lobbyPlayersKey, lobbyVariantKey);
 
   if (typeof window === "undefined") {
     return defaultState;

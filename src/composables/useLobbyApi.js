@@ -6,6 +6,7 @@ export function useLobbyApi({
   persistLobbyPlayers,
   showToast,
   getOrCreateHostClientId,
+  getLobbyPlayerSlotCount,
 }) {
   let latestHostLockRequestId = 0;
   let resolvedApiBaseUrl = "";
@@ -164,7 +165,11 @@ export function useLobbyApi({
 
       state.playerNameOptions.value = names;
       if (typeof window !== "undefined") {
-        state.lobbySelectedPlayers.value = ["", "", "", ""];
+        const slotCount = Number(getLobbyPlayerSlotCount?.() || 4);
+        state.lobbySelectedPlayers.value = Array.from(
+          { length: Math.max(1, slotCount) },
+          (_, index) => String(state.lobbySelectedPlayers.value[index] || "").trim(),
+        );
       }
     } catch (error) {
       console.warn("Kon spelersnamen niet laden.", error);

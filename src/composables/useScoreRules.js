@@ -10,6 +10,15 @@ export function useScoreRules({
   maxNegativeChoices,
   maxPositiveChoices,
 }) {
+  function resolveChoiceLimit(limitValue, fallback) {
+    const raw =
+      limitValue && typeof limitValue === "object" && "value" in limitValue
+        ? limitValue.value
+        : limitValue;
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) ? numeric : fallback;
+  }
+
   function beforeScoreChange() {
     if (typeof onBeforeScoreChange === "function") {
       onBeforeScoreChange();
@@ -127,16 +136,18 @@ export function useScoreRules({
     }
 
     const stats = chooserStats.value[playerId];
+    const negativeLimit = resolveChoiceLimit(maxNegativeChoices, 0);
+    const positiveLimit = resolveChoiceLimit(maxPositiveChoices, 0);
     if (
       round.kind === "negatief" &&
-      stats.negativeChosen >= maxNegativeChoices
+      stats.negativeChosen >= negativeLimit
     ) {
       return false;
     }
 
     if (
       round.kind === "positief" &&
-      stats.positiveChosen >= maxPositiveChoices
+      stats.positiveChosen >= positiveLimit
     ) {
       return false;
     }
@@ -390,7 +401,7 @@ export function useScoreRules({
       }
 
       if (troefNumber === 2) {
-        return `<span class="grid w-full grid-cols-[1fr_auto] items-center"><span class="text-center">(+50pnt)</span><span class="text-right">${troefNumber}</span></span>`;
+        return `<span class="grid w-full grid-cols-[1fr_auto] items-center"><span class="text-center">(+${round.pointsPerUnit}pnt)</span><span class="text-right">${troefNumber}</span></span>`;
       }
 
       if (Number.isFinite(troefNumber) && troefNumber > 0) {

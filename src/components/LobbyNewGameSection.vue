@@ -1,5 +1,17 @@
 <script setup>
 const props = defineProps({
+  lobbyVariantKey: {
+    type: String,
+    required: true,
+  },
+  lobbyVariantOptions: {
+    type: Array,
+    required: true,
+  },
+  lobbyPlayerCount: {
+    type: Number,
+    required: true,
+  },
   lobbySelectedPlayers: {
     type: Array,
     required: true,
@@ -35,6 +47,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits([
+  "update:lobbyVariantKey",
   "update:lobbyPlayerAt",
   "update:lobbyGameCode",
   "start-host",
@@ -54,8 +67,27 @@ function updateLobbyPlayerAt(index, value) {
     </p>
     <div class="mt-4 grid gap-2">
       <div class="rounded-lg border border-sky-200 bg-white/80 p-2">
-        <h2 class="text-sm font-semibold text-sky-900">Kies 4 spelers</h2>
-        <div class="mt-2 grid grid-cols-4 gap-1 md:grid-cols-4">
+        <div class="grid grid-cols-[auto_1fr] items-center gap-2">
+          <h2 class="text-sm font-semibold text-sky-900">
+            Variant
+          </h2>
+          <select
+            :value="props.lobbyVariantKey"
+            class="rounded border border-sky-300 bg-white px-1 py-1 text-xs text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
+            @change="emit('update:lobbyVariantKey', $event.target.value)">
+            <option
+              v-for="option in props.lobbyVariantOptions"
+              :key="option.key"
+              :value="option.key">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+
+        <h2 class="mt-2 text-sm font-semibold text-sky-900">
+          Kies {{ props.lobbyPlayerCount }} spelers
+        </h2>
+        <div class="mt-2 grid gap-1" :class="props.lobbyPlayerCount === 4 ? 'grid-cols-4 md:grid-cols-4' : 'grid-cols-3 md:grid-cols-3'">
           <div
             v-for="(_selectedName, index) in props.lobbySelectedPlayers"
             :key="`lobby-player-${index}`"

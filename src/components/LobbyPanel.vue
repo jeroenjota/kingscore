@@ -28,6 +28,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits([
+  "update:lobbyVariantKey",
   "update:lobbyPlayerAt",
   "update:lobbyGameCode",
   "update:lobbyNewPlayerName",
@@ -129,6 +130,9 @@ const emit = defineEmits([
       @delete-player="emit('delete-player')" />
 
     <LobbyNewGameSection
+      :lobby-variant-key="props.newGameState.lobbyVariantKey"
+      :lobby-variant-options="props.newGameState.lobbyVariantOptions"
+      :lobby-player-count="props.newGameState.lobbyPlayerCount"
       :lobby-selected-players="props.newGameState.lobbySelectedPlayers"
       :player-name-options="props.playersState.playerNameOptions"
       :is-lobby-player-option-disabled="props.newGameState.isLobbyPlayerOptionDisabled"
@@ -137,6 +141,7 @@ const emit = defineEmits([
       :is-start-host-disabled="props.newGameState.isStartHostDisabled"
       :lobby-host-check-loading="props.newGameState.lobbyHostCheckLoading"
       :lobby-host-locked="props.newGameState.lobbyHostLocked"
+      @update:lobby-variant-key="(value) => emit('update:lobbyVariantKey', value)"
       @update:lobby-player-at="({ index, value }) => emit('update:lobbyPlayerAt', { index, value })"
       @update:lobby-game-code="(value) => emit('update:lobbyGameCode', value)"
       @start-host="emit('start-host')"

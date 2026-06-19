@@ -7,13 +7,15 @@ import ScoreTable from "./components/ScoreTable.vue";
 import ViewerQrModal from "./components/ViewerQrModal.vue";
 import ResultsModal from "./components/ResultsModal.vue";
 import {
-  DEFAULT_PLAYER_NAMES,
-  MAX_NEGATIVE_CHOICES,
-  MAX_POSITIVE_CHOICES,
+  DEFAULT_VARIANT_KEY,
+  VARIANT_OPTIONS,
   detectInitialGameId,
+  getDefaultPlayerNamesForVariant,
+  getMaxNegativeChoicesForVariant,
+  getMaxPositiveChoicesForVariant,
+  getVariantConfig,
   loadPersistedState,
   normalizeState,
-  roundTemplates,
 } from "./lib/gameState";
 import { useLobbyApi } from "./composables/useLobbyApi";
 import { useScoreRules } from "./composables/useScoreRules";
@@ -22,6 +24,7 @@ const playerNameOptions = ref([]);
 
 const STORAGE_KEY = `kingscore-state-v1:${detectInitialGameId()}`;
 const LOBBY_PLAYERS_KEY = "kingscore-lobby-players-v1";
+const LOBBY_VARIANT_KEY = "kingscore-lobby-variant-v1";
 const LOBBY_ADMIN_CODE_KEY = "kingscore-lobby-admin-code-v1";
 const LOBBY_ADMIN_CODE_TTL_MS = 2 * 60 * 60 * 1000;
 const SYNC_POLL_INTERVAL_MS = 8000;
@@ -30,17 +33,27 @@ const SYNC_PUSH_DEBOUNCE_MS = 1000;
 const initialState = loadPersistedState({
   storageKey: STORAGE_KEY,
   lobbyPlayersKey: LOBBY_PLAYERS_KEY,
+  lobbyVariantKey: LOBBY_VARIANT_KEY,
 });
 
 const players = ref(initialState.players);
 const turnStartPlayerId = ref(initialState.turnStartPlayerId);
 const activeCellKey = ref(null);
 const rounds = ref(initialState.rounds);
+const activeVariantKey = ref(initialState.variant || DEFAULT_VARIANT_KEY);
+const lobbyVariantKey = ref(initialState.variant || DEFAULT_VARIANT_KEY);
 const gameId = ref(detectInitialGameId());
 const isViewerMode = ref(false);
 const syncStatus = ref("Lokaal");
 const lobbyGameCode = ref(gameId.value || randomGameId());
 const hasActiveGame = computed(() => gameId.value.length > 0);
+const lobbyVariantOptions = VARIANT_OPTIONS;
+const lobbyPlayerCount = computed(
+  () => getVariantConfig(lobbyVariantKey.value).playerCount,
+);
+const lobbyDefaultPlayerNames = computed(() =>
+  getDefaultPlayerNamesForVariant(lobbyVariantKey.value),
+);
 
 const isEditingDisabled = computed(() => isViewerMode.value);
 const selectablePlayerNames = computed(() => {
@@ -86,10 +99,18 @@ const lobbyDeletePlayerMessage = ref("");
 const lobbyDeletePlayerError = ref("");
 const isAddingLobbyPlayer = ref(false);
 const isDeletingLobbyPlayer = ref(false);
-const lobbySelectedPlayers = ref(["", "", "", ""]);
+const lobbySelectedPlayers = ref(
+  Array.from({ length: lobbyPlayerCount.value }, () => ""),
+);
 const lobbySelectionError = ref("");
 const hostClientId = ref("");
 const toastMessage = ref("");
+const maxNegativeChoicesForGame = computed(() =>
+  getMaxNegativeChoicesForVariant(activeVariantKey.value),
+);
+const maxPositiveChoicesForGame = computed(() =>
+  getMaxPositiveChoicesForVariant(activeVariantKey.value),
+);
 const isStartHostDisabled = computed(
   () => lobbyHostCheckLoading.value,
 );
@@ -193,6 +214,36 @@ function showToast(message) {
   }, 2200);
 }
 
+function normalizeLobbyVariantKey(rawValue) {
+  const value = String(rawValue || "").trim();
+  return VARIANT_OPTIONS.some((option) => option.key === value)
+    ? value
+    : DEFAULT_VARIANT_KEY;
+}
+
+function persistLobbyVariant() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(LOBBY_VARIANT_KEY, lobbyVariantKey.value);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function resizeLobbyPlayersForVariant(variantKey) {
+  const targetCount = getVariantConfig(variantKey).playerCount;
+  const current = Array.isArray(lobbySelectedPlayers.value)
+    ? lobbySelectedPlayers.value
+    : [];
+
+  lobbySelectedPlayers.value = Array.from({ length: targetCount }, (_, index) =>
+    String(current[index] || "").trim(),
+  );
+}
+
 const {
   syncApiBaseUrl,
   clearPersistedLobbyAdminCode,
@@ -237,6 +288,7 @@ const {
   persistLobbyPlayers,
   showToast,
   getOrCreateHostClientId,
+  getLobbyPlayerSlotCount: () => lobbyPlayerCount.value,
 });
 
 function persistState() {
@@ -253,6 +305,7 @@ function persistState() {
         counts: round.counts,
       })),
       turnStartPlayerId: turnStartPlayerId.value,
+      variant: activeVariantKey.value,
     };
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -271,6 +324,7 @@ function applyState(rawState) {
   players.value = normalized.players;
   rounds.value = normalized.rounds;
   turnStartPlayerId.value = normalized.turnStartPlayerId;
+  activeVariantKey.value = normalizeLobbyVariantKey(normalized.variant);
   isApplyingRemoteState = false;
 
   if (!isViewerMode.value) {
@@ -289,6 +343,7 @@ function serializableState() {
       counts: round.counts,
     })),
     turnStartPlayerId: turnStartPlayerId.value,
+    variant: activeVariantKey.value,
   };
 }
 
@@ -545,24 +600,26 @@ function formatUpdatedAt(timestamp) {
 function resolveLobbyPlayersForStart() {
   const selected = lobbySelectedPlayers.value.map((name) => String(name || "").trim());
   const filledNames = selected.filter(Boolean);
+  const requiredPlayerCount = lobbyPlayerCount.value;
+  const defaults = lobbyDefaultPlayerNames.value;
 
   if (filledNames.length === 0) {
     const shouldUseDefaults = window.confirm(
-      `Er zijn nog geen spelers gekozen. Wil je ${DEFAULT_PLAYER_NAMES.join(", ")} gebruiken?`,
+      `Er zijn nog geen spelers gekozen. Wil je ${defaults.join(", ")} gebruiken?`,
     );
 
     if (!shouldUseDefaults) {
-      lobbySelectionError.value = "Game starten geannuleerd. Kies vier spelers om verder te gaan.";
+      lobbySelectionError.value = `Game starten geannuleerd. Kies ${requiredPlayerCount} spelers om verder te gaan.`;
       return null;
     }
 
-    return [...DEFAULT_PLAYER_NAMES];
+    return [...defaults];
   }
 
   const uniqueSelected = [...new Set(filledNames)];
-  if (uniqueSelected.length !== 4) {
+  if (uniqueSelected.length !== requiredPlayerCount) {
     lobbySelectionError.value =
-      "Kies vier verschillende spelers om de game te starten.";
+      `Kies ${requiredPlayerCount} verschillende spelers om de game te starten.`;
     return null;
   }
 
@@ -641,6 +698,7 @@ async function goToGame(viewerMode) {
     }
   }
 
+  persistLobbyVariant();
   lobbySelectedPlayers.value = [...selectedPlayers];
   persistLobbyPlayers();
 
@@ -928,6 +986,19 @@ watch(
   { deep: true },
 );
 
+watch(lobbyVariantKey, (value) => {
+  const normalized = normalizeLobbyVariantKey(value);
+  if (normalized !== value) {
+    lobbyVariantKey.value = normalized;
+    return;
+  }
+
+  resizeLobbyPlayersForVariant(normalized);
+  lobbySelectionError.value = "";
+  persistLobbyVariant();
+  persistLobbyPlayers();
+});
+
 watch(lobbyGameCode, () => {
   lobbyHostLocked.value = false;
   void refreshLobbyHostLock();
@@ -972,6 +1043,9 @@ watch(playerNameOptions, () => {
 });
 
 onMounted(async () => {
+  lobbyVariantKey.value = normalizeLobbyVariantKey(lobbyVariantKey.value);
+  resizeLobbyPlayersForVariant(lobbyVariantKey.value);
+
   initGameFromUrl();
   lobbyAdminCode.value = loadPersistedLobbyAdminCode();
   await loadPlayerNameOptions();
@@ -1071,8 +1145,8 @@ const {
   activeCellKey,
   isEditingDisabled,
   onBeforeScoreChange: captureUndoSnapshot,
-  maxNegativeChoices: MAX_NEGATIVE_CHOICES,
-  maxPositiveChoices: MAX_POSITIVE_CHOICES,
+  maxNegativeChoices: maxNegativeChoicesForGame,
+  maxPositiveChoices: maxPositiveChoicesForGame,
 });
 </script>
 
@@ -1111,6 +1185,9 @@ const {
         lobbyDeletePlayerError,
       }"
       :new-game-state="{
+        lobbyVariantKey,
+        lobbyVariantOptions,
+        lobbyPlayerCount,
         lobbySelectedPlayers,
         lobbySelectionError,
         lobbyGameCode,
@@ -1126,6 +1203,7 @@ const {
         formatUpdatedAt,
       }"
       @update:lobby-player-at="({ index, value }) => (lobbySelectedPlayers[index] = value)"
+      @update:lobby-variant-key="(value) => (lobbyVariantKey = value)"
       @update:lobby-game-code="(value) => (lobbyGameCode = value)"
       @update:lobby-new-player-name="(value) => (lobbyNewPlayerName = value)"
       @update:lobby-delete-player-name="(value) => (lobbyDeletePlayerName = value)"
