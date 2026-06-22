@@ -55,6 +55,11 @@ export function useLobbyApi({
     return `${normalizedBase}${normalizedPath}`;
   }
 
+  function getAdminCodeHeaders() {
+    const adminCode = String(state.lobbyAdminCode?.value || "").trim();
+    return adminCode ? { "X-Admin-Code": adminCode } : {};
+  }
+
   async function fetchLobbyApi(path, options) {
     const candidates = [...new Set(getApiBaseCandidates().filter(Boolean))];
     let lastError = null;
@@ -152,9 +157,18 @@ export function useLobbyApi({
   }
 
   async function loadPlayerNameOptions() {
+    const adminCode = String(state.lobbyAdminCode?.value || "").trim();
+    if (!adminCode) {
+      state.playerNameOptions.value = [];
+      return;
+    }
+
     try {
-      const response = await fetchLobbyApi("/api/player-names");
+      const response = await fetchLobbyApi("/api/player-names", {
+        headers: getAdminCodeHeaders(),
+      });
       if (!response.ok) {
+        state.playerNameOptions.value = [];
         return;
       }
 
@@ -191,7 +205,10 @@ export function useLobbyApi({
     try {
       const response = await fetchLobbyApi("/api/player-names", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getAdminCodeHeaders(),
+        },
         body: JSON.stringify({ name }),
       });
 

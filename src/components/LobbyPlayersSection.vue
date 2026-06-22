@@ -53,7 +53,7 @@ const emit = defineEmits([
 <template>
   <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
     <p class="text-center text-lg font-semibold text-sky-900">Spelers</p>
-    <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
+    <div class="mt-1 rounded-lg border border-sky-200 bg-white/80 p-2">
       <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
         <label class="text-sm font-semibold text-sky-900">
           Nieuwe speler

@@ -24,6 +24,10 @@ const props = defineProps({
     type: Function,
     required: true,
   },
+  isPlayerSelectionEnabled: {
+    type: Boolean,
+    default: false,
+  },
   lobbySelectionError: {
     type: String,
     default: "",
@@ -62,16 +66,12 @@ function updateLobbyPlayerAt(index, value) {
 
 <template>
   <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
-    <p class="text-center text-lg font-semibold text-sky-900">
-      Nieuw spel
-    </p>
-    <div class="mt-4 grid gap-2">
+    <p class="text-center text-lg font-semibold text-sky-900">Nieuw spel</p>
+    <div class="mt-1 grid gap-2">
       <div class="rounded-lg border border-sky-200 bg-white/80 p-2">
         <div class="grid grid-cols-[auto_1fr] items-center gap-2">
-          <h2 class="text-sm font-semibold text-sky-900">
-            Kies
-          </h2>
-          <div class="flex flex-wrap items-center gap-3">
+          <div class="col-span-2 flex w-full flex-wrap items-center justify-center gap-4">
+            <h2 class="inline-flex text-sm font-semibold text-sky-900">Kies</h2>
             <label
               v-for="option in props.lobbyVariantOptions"
               :key="option.key"
@@ -82,20 +82,27 @@ function updateLobbyPlayerAt(index, value) {
                 :value="option.key"
                 :checked="props.lobbyVariantKey === option.key"
                 class="h-3.5 w-3.5 border-sky-400 text-sky-700 focus:ring-sky-300"
-                @change="emit('update:lobbyVariantKey', option.key)">
+                @change="emit('update:lobbyVariantKey', option.key)" />
               <span>{{ option.label }}</span>
             </label>
           </div>
         </div>
 
-        <div class="mt-2 grid gap-1" :class="props.lobbyPlayerCount === 4 ? 'grid-cols-4 md:grid-cols-4' : 'grid-cols-3 md:grid-cols-3'">
+        <div
+          v-if="props.isPlayerSelectionEnabled"
+          class="mt-2 grid gap-1"
+          :class="
+            props.lobbyPlayerCount === 4
+              ? 'grid-cols-4 md:grid-cols-4'
+              : 'grid-cols-3 md:grid-cols-3'
+          ">
           <div
             v-for="(_selectedName, index) in props.lobbySelectedPlayers"
             :key="`lobby-player-${index}`"
             class="grid gap-1">
-            <span class="text-xs font-semibold text-sky-800"
-              >Speler {{ index + 1 }}</span
-            >
+            <span class="text-xs font-semibold text-sky-800">
+              Speler {{ index + 1 }}
+            </span>
             <select
               :value="props.lobbySelectedPlayers[index]"
               class="rounded border border-sky-300 bg-white px-1 py-1 text-xs text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
@@ -118,7 +125,7 @@ function updateLobbyPlayerAt(index, value) {
         <div class="mt-2 rounded-lg border border-sky-200 bg-white/80 p-2">
           <div class="grid grid-cols-[auto_6rem_auto] items-center gap-2">
             <label class="text-sm font-semibold text-sky-900" for="game-code">
-              Nieuwe spel code
+              Spel code
             </label>
             <input
               id="game-code"

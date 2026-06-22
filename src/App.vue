@@ -502,12 +502,14 @@ async function refreshLobbyApiStatus() {
   lobbyApiStatusLoading.value = true;
 
   try {
-    const response = await fetchLobbyApi("/api/player-names", {
+    const response = await fetchLobbyApi("/health", {
       cache: "no-store",
     });
     lobbyApiReachable.value = response.ok;
+    console.debug("Lobby API status:", response.ok ? "reachable" : "unreachable");
   } catch {
     lobbyApiReachable.value = false;
+    console.debug("Lobby API status: unreachable");
   } finally {
     lobbyApiStatusLoading.value = false;
   }
@@ -542,6 +544,10 @@ async function refreshLobbyAdminCodeValidity() {
     }
 
     lobbyAdminCodeValid.value = response.status === 400;
+
+    if (lobbyAdminCodeValid.value) {
+      await loadPlayerNameOptions();
+    }
   } catch {
     if (requestId !== latestLobbyAdminValidationId) {
       return;
@@ -604,8 +610,12 @@ function resolveLobbyPlayersForStart() {
   const defaults = lobbyDefaultPlayerNames.value;
 
   if (filledNames.length === 0) {
+    if (!lobbyAdminCodeValid.value) {
+      return [...defaults];
+    }
+
     const shouldUseDefaults = window.confirm(
-      `Er zijn nog geen spelers gekozen. Wil je ${defaults.join(", ")} gebruiken?`,
+      `Er zijn nog geen spelersnamen gekozen. Wil je ${defaults.join(", ")} gebruiken?`,
     );
 
     if (!shouldUseDefaults) {
@@ -1004,12 +1014,13 @@ watch(lobbyGameCode, () => {
   void refreshLobbyHostLock();
 });
 
-watch(lobbyAdminCode, (value) => {
+watch(lobbyAdminCode, async (value) => {
   persistLobbyAdminCode(value);
 
   lobbyAdminCodeValid.value = false;
   lobbyApiReachable.value = false;
   lobbyApiStatusLoading.value = false;
+  playerNameOptions.value = [];
 
   if (lobbyAdminValidationTimeoutId) {
     clearTimeout(lobbyAdminValidationTimeoutId);
@@ -1048,7 +1059,6 @@ onMounted(async () => {
 
   initGameFromUrl();
   lobbyAdminCode.value = loadPersistedLobbyAdminCode();
-  await loadPlayerNameOptions();
 
   if (!hasActiveGame.value) {
     syncStatus.value = "Lobby";

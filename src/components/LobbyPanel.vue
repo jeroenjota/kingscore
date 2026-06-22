@@ -104,16 +104,17 @@ const emit = defineEmits([
         </button>
     </div>
     <p
-      v-if="props.apiState.lobbyApiBaseUrl"
-      class="mt-1 break-all text-[11px] text-sky-700"
+      v-if="!props.apiState.lobbyApiBaseUrl"
+      class="mt-1 break-all text-[11px] text-red-700"
     >
-      API: <span class="font-mono">{{ props.apiState.lobbyApiBaseUrl }}</span>
+      API: <span class="font-mono">Geen verbinding!</span>
     </p>
     <LobbyAdminSection
       :lobby-admin-code="props.adminState.lobbyAdminCode"
       @update:lobby-admin-code="(value) => emit('update:lobbyAdminCode', value)" />
 
     <LobbyPlayersSection
+      v-if="props.apiState.lobbyAdminCodeValid"
       :player-name-options="props.playersState.playerNameOptions"
       :lobby-new-player-name="props.playersState.lobbyNewPlayerName"
       :is-adding-lobby-player="props.playersState.isAddingLobbyPlayer"
@@ -136,6 +137,7 @@ const emit = defineEmits([
       :lobby-selected-players="props.newGameState.lobbySelectedPlayers"
       :player-name-options="props.playersState.playerNameOptions"
       :is-lobby-player-option-disabled="props.newGameState.isLobbyPlayerOptionDisabled"
+      :is-player-selection-enabled="props.apiState.lobbyAdminCodeValid"
       :lobby-selection-error="props.newGameState.lobbySelectionError"
       :lobby-game-code="props.newGameState.lobbyGameCode"
       :is-start-host-disabled="props.newGameState.isStartHostDisabled"

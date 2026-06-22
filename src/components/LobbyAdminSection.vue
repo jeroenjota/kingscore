@@ -23,7 +23,7 @@ const emit = defineEmits(["update:lobbyAdminCode"]);
           class="h-8 w-full rounded border border-sky-300 bg-white px-2 text-sm text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
           placeholder="Code"
           @input="emit('update:lobbyAdminCode', $event.target.value)" />
-        <span class="text-xs text-sky-700">Voor verwijderen spelers en spellen</span>
+        <span class="text-xs text-sky-700">Voor onderhoud gegevens</span>
       </div>
     </div>
   </div>
