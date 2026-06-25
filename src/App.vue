@@ -531,9 +531,8 @@ async function refreshLobbyAdminCodeValidity() {
   lobbyAdminCodeValidationLoading.value = true;
 
   try {
-    // Use an invalid game id to validate admin code without deleting anything.
-    const response = await fetchLobbyApi("/api/games/ab", {
-      method: "DELETE",
+    const response = await fetchLobbyApi("/api/player-names", {
+      cache: "no-store",
       headers: {
         "X-Admin-Code": code,
       },
@@ -543,10 +542,19 @@ async function refreshLobbyAdminCodeValidity() {
       return;
     }
 
-    lobbyAdminCodeValid.value = response.status === 400;
+    lobbyAdminCodeValid.value = response.ok;
 
     if (lobbyAdminCodeValid.value) {
-      await loadPlayerNameOptions();
+      const payload = await response.json().catch(() => ({}));
+      const names = Array.isArray(payload?.names)
+        ? payload.names.map((name) => String(name || "").trim()).filter(Boolean)
+        : [];
+
+      playerNameOptions.value = names;
+      const currentDeleteName = String(lobbyDeletePlayerName.value || "").trim();
+      if (currentDeleteName && !names.includes(currentDeleteName)) {
+        lobbyDeletePlayerName.value = "";
+      }
     }
   } catch {
     if (requestId !== latestLobbyAdminValidationId) {

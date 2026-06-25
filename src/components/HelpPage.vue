@@ -60,7 +60,7 @@ const threePlayerNegativeRules = [
       <article class="rounded-lg border border-sky-200 bg-white p-3">
         <h2 class="text-lg font-semibold text-sky-900">Instructies voor gebruik</h2>
         <ol class="list-decimal space-y-1 pl-5 text-sm text-sky-900">
-          <li>Voer eventueel spelersnamen in in de lobby.</li>
+          <li>Selecteer eventueel spelersnamen in, in de lobby (als de beheerscode is ingevoerd).</li>
           <li>Klik op "Start als Gastheer".</li>
           <li>De gastheer vult als enige de scores in.</li>
           <li>In het score scherm is een knop voor een QR-code</li>
