@@ -7,6 +7,7 @@ export function useScoreRules({
   activeCellKey,
   isEditingDisabled,
   onBeforeScoreChange,
+  onValidationError,
   maxNegativeChoices,
   maxPositiveChoices,
 }) {
@@ -19,9 +20,20 @@ export function useScoreRules({
     return Number.isFinite(numeric) ? numeric : fallback;
   }
 
-  function beforeScoreChange() {
+  function beforeScoreChange(reason = "") {
     if (typeof onBeforeScoreChange === "function") {
-      onBeforeScoreChange();
+      onBeforeScoreChange(reason);
+    }
+  }
+
+  function getPlayerName(playerId) {
+    const player = players.value.find((candidate) => candidate.id === playerId);
+    return String(player?.name || "Speler");
+  }
+
+  function reportValidationError(message) {
+    if (typeof onValidationError === "function") {
+      onValidationError(message);
     }
   }
 
@@ -170,7 +182,7 @@ export function useScoreRules({
         return;
       }
 
-      beforeScoreChange();
+      beforeScoreChange(`Keuze verwijderd: ${getPlayerName(playerId)} bij ${round.name}`);
       round.selections[playerId] = false;
 
       if (chosenRoundCount() === 0) {
@@ -189,7 +201,7 @@ export function useScoreRules({
       return;
     }
 
-    beforeScoreChange();
+    beforeScoreChange(`Kiezer gezet: ${getPlayerName(playerId)} bij ${round.name}`);
 
     if (!turnStartPlayerId.value) {
       turnStartPlayerId.value = playerId;
@@ -231,15 +243,31 @@ export function useScoreRules({
     }
 
     const numeric = Number(rawValue);
-    const integerValue = Number.isFinite(numeric) ? Math.floor(numeric) : 0;
+    if (!Number.isFinite(numeric)) {
+      reportValidationError("Score moet een geldig getal zijn.");
+      return;
+    }
+
+    const integerValue = Math.floor(numeric);
+    if (integerValue < 0) {
+      reportValidationError("Score mag niet negatief zijn.");
+    }
+
     const safeValue = Math.max(0, integerValue);
-    const nextValue = Math.min(safeValue, remainingForPlayer(round, playerId));
+    const maxForCell = remainingForPlayer(round, playerId);
+    if (safeValue > maxForCell) {
+      reportValidationError(
+        `Te hoog: maximaal ${maxForCell} ${round.unit || "items"} voor deze speler in deze ronde.`,
+      );
+    }
+
+    const nextValue = Math.min(safeValue, maxForCell);
 
     if (nextValue === Number(round.counts[playerId] || 0)) {
       return;
     }
 
-    beforeScoreChange();
+    beforeScoreChange(`Score aangepast: ${getPlayerName(playerId)} bij ${round.name}`);
     round.counts[playerId] = nextValue;
   }
 

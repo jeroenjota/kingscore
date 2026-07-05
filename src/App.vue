@@ -29,6 +29,8 @@ const LOBBY_ADMIN_CODE_KEY = "kingscore-lobby-admin-code-v1";
 const LOBBY_ADMIN_CODE_TTL_MS = 2 * 60 * 60 * 1000;
 const SYNC_POLL_INTERVAL_MS = 8000;
 const SYNC_PUSH_DEBOUNCE_MS = 1000;
+const SYNC_RETRY_BASE_DELAY_MS = 1500;
+const SYNC_RETRY_MAX_DELAY_MS = 30_000;
 
 const initialState = loadPersistedState({
   storageKey: STORAGE_KEY,
@@ -45,6 +47,8 @@ const lobbyVariantKey = ref(initialState.variant || DEFAULT_VARIANT_KEY);
 const gameId = ref(detectInitialGameId());
 const isViewerMode = ref(false);
 const syncStatus = ref("Lokaal");
+const isSyncOnline = computed(() => syncStatus.value === "Online");
+const isSyncQueued = computed(() => syncStatus.value.startsWith("Wachtrij"));
 const lobbyGameCode = ref(gameId.value || randomGameId());
 const hasActiveGame = computed(() => gameId.value.length > 0);
 const lobbyVariantOptions = VARIANT_OPTIONS;
@@ -102,7 +106,6 @@ const isDeletingLobbyPlayer = ref(false);
 const lobbySelectedPlayers = ref(
   Array.from({ length: lobbyPlayerCount.value }, () => ""),
 );
-const lobbySelectionError = ref("");
 const hostClientId = ref("");
 const toastMessage = ref("");
 const maxNegativeChoicesForGame = computed(() =>
@@ -126,22 +129,78 @@ let isApplyingRemoteState = false;
 let lastRemoteUpdatedAt = 0;
 let toastTimerId = null;
 let lastPushedStateSignature = "";
+let lastScoreValidationMessage = "";
+let lastScoreValidationAt = 0;
+let queuedRemoteState = null;
+let queuedRemoteStateSignature = "";
+let isRemotePushInFlight = false;
+let remotePushRetryTimerId = null;
+let remotePushRetryAttempt = 0;
 const HOST_HEARTBEAT_INTERVAL_MS = 10_000;
 const SCORE_UNDO_LIMIT = 120;
+const SCORE_HISTORY_LIMIT = 20;
 const scoreUndoStack = ref([]);
 const scoreRedoStack = ref([]);
+const scoreHistoryEntries = ref([]);
+const showScoreHistory = ref(false);
+const pendingSyncCount = ref(0);
+const lobbySelectionError = computed(() => {
+  if (!lobbyAdminCodeValid.value) {
+    return "";
+  }
+
+  const selected = lobbySelectedPlayers.value.map((name) =>
+    String(name || "").trim(),
+  );
+  const filled = selected.filter(Boolean);
+  const requiredPlayerCount = lobbyPlayerCount.value;
+  const missingCount = Math.max(0, requiredPlayerCount - filled.length);
+
+  const duplicateNames = [...new Set(
+    filled.filter((name, index) => filled.indexOf(name) !== index),
+  )];
+
+  const messages = [];
+  if (missingCount > 0) {
+    messages.push(
+      `Kies nog ${missingCount} speler${missingCount === 1 ? "" : "s"}.`,
+    );
+  }
+
+  if (duplicateNames.length > 0) {
+    messages.push(`Dubbele selectie: ${duplicateNames.join(", ")}.`);
+  }
+
+  return messages.join(" ");
+});
 
 function cloneScoreState(state) {
   return JSON.parse(JSON.stringify(state));
 }
 
-function captureUndoSnapshot() {
+function recordScoreHistoryEntry(label, snapshot) {
+  scoreHistoryEntries.value.unshift({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    label: String(label || "Score aangepast"),
+    timestamp: Date.now(),
+    snapshot,
+  });
+
+  if (scoreHistoryEntries.value.length > SCORE_HISTORY_LIMIT) {
+    scoreHistoryEntries.value.length = SCORE_HISTORY_LIMIT;
+  }
+}
+
+function captureUndoSnapshot(changeLabel = "") {
   if (isViewerMode.value || !hasActiveGame.value) {
     return;
   }
 
-  scoreUndoStack.value.push(cloneScoreState(serializableState()));
+  const snapshot = cloneScoreState(serializableState());
+  scoreUndoStack.value.push(snapshot);
   scoreRedoStack.value = [];
+  recordScoreHistoryEntry(changeLabel, snapshot);
+
   if (scoreUndoStack.value.length > SCORE_UNDO_LIMIT) {
     scoreUndoStack.value.shift();
   }
@@ -150,6 +209,60 @@ function captureUndoSnapshot() {
 function clearScoreHistory() {
   scoreUndoStack.value = [];
   scoreRedoStack.value = [];
+  scoreHistoryEntries.value = [];
+  showScoreHistory.value = false;
+}
+
+function canOpenScoreHistory() {
+  return !isViewerMode.value && scoreHistoryEntries.value.length > 0;
+}
+
+function openScoreHistory() {
+  if (!canOpenScoreHistory()) {
+    return;
+  }
+
+  showScoreHistory.value = true;
+}
+
+function closeScoreHistory() {
+  showScoreHistory.value = false;
+}
+
+function formatHistoryTimestamp(timestamp) {
+  return new Intl.DateTimeFormat("nl-NL", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function rollbackToHistoryEntry(entryId) {
+  if (isViewerMode.value) {
+    return;
+  }
+
+  const entryIndex = scoreHistoryEntries.value.findIndex(
+    (entry) => entry.id === entryId,
+  );
+  if (entryIndex < 0) {
+    return;
+  }
+
+  const entry = scoreHistoryEntries.value[entryIndex];
+  const currentSnapshot = cloneScoreState(serializableState());
+  scoreUndoStack.value.push(currentSnapshot);
+  if (scoreUndoStack.value.length > SCORE_UNDO_LIMIT) {
+    scoreUndoStack.value.shift();
+  }
+
+  scoreRedoStack.value = [];
+  applyState(entry.snapshot);
+
+  // Remove rolled-back changes from history, keep older checkpoints.
+  scoreHistoryEntries.value = scoreHistoryEntries.value.slice(entryIndex + 1);
+  showScoreHistory.value = false;
+  showToast(`Teruggezet naar: ${entry.label}`);
 }
 
 function canUndoScoreInput() {
@@ -212,6 +325,22 @@ function showToast(message) {
     toastMessage.value = "";
     toastTimerId = null;
   }, 2200);
+}
+
+function showScoreValidationError(message) {
+  const text = String(message || "").trim();
+  if (!text) {
+    return;
+  }
+
+  const now = Date.now();
+  if (text === lastScoreValidationMessage && now - lastScoreValidationAt < 1200) {
+    return;
+  }
+
+  lastScoreValidationMessage = text;
+  lastScoreValidationAt = now;
+  showToast(text);
 }
 
 function normalizeLobbyVariantKey(rawValue) {
@@ -347,11 +476,195 @@ function serializableState() {
   };
 }
 
+function getSyncQueueStorageKey() {
+  if (!gameId.value) {
+    return "";
+  }
+
+  return `kingscore-sync-queue-v1:${gameId.value}`;
+}
+
+function updateSyncStatus(online) {
+  if (pendingSyncCount.value > 0) {
+    syncStatus.value = `Wachtrij (${pendingSyncCount.value})`;
+    return;
+  }
+
+  syncStatus.value = online ? "Online" : "Lokaal";
+}
+
+function persistQueuedRemoteState() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const queueKey = getSyncQueueStorageKey();
+  if (!queueKey) {
+    return;
+  }
+
+  try {
+    if (!queuedRemoteState || !queuedRemoteStateSignature) {
+      window.localStorage.removeItem(queueKey);
+      return;
+    }
+
+    window.localStorage.setItem(
+      queueKey,
+      JSON.stringify({
+        state: queuedRemoteState,
+        signature: queuedRemoteStateSignature,
+      }),
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function clearQueuedRemoteState() {
+  queuedRemoteState = null;
+  queuedRemoteStateSignature = "";
+  pendingSyncCount.value = 0;
+  persistQueuedRemoteState();
+}
+
+function queueRemoteState(statePayload) {
+  const signature = JSON.stringify(statePayload);
+  if (signature === lastPushedStateSignature && pendingSyncCount.value === 0) {
+    return false;
+  }
+
+  queuedRemoteState = statePayload;
+  queuedRemoteStateSignature = signature;
+  pendingSyncCount.value = 1;
+  persistQueuedRemoteState();
+  updateSyncStatus(navigator.onLine);
+  return true;
+}
+
+function restoreQueuedRemoteState() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const queueKey = getSyncQueueStorageKey();
+  if (!queueKey) {
+    return;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(queueKey);
+    if (!raw) {
+      return;
+    }
+
+    const parsed = JSON.parse(raw);
+    const normalized = normalizeState(parsed?.state);
+    if (!normalized) {
+      window.localStorage.removeItem(queueKey);
+      return;
+    }
+
+    queuedRemoteState = normalized;
+    queuedRemoteStateSignature =
+      typeof parsed?.signature === "string" && parsed.signature
+        ? parsed.signature
+        : JSON.stringify(normalized);
+    pendingSyncCount.value = 1;
+    updateSyncStatus(navigator.onLine);
+  } catch {
+    window.localStorage.removeItem(queueKey);
+  }
+}
+
+function scheduleQueuedRemotePushRetry() {
+  if (remotePushRetryTimerId || !queuedRemoteState) {
+    return;
+  }
+
+  const retryExponent = Math.min(remotePushRetryAttempt, 6);
+  const delay = Math.min(
+    SYNC_RETRY_MAX_DELAY_MS,
+    SYNC_RETRY_BASE_DELAY_MS * (2 ** retryExponent),
+  );
+
+  remotePushRetryTimerId = setTimeout(() => {
+    remotePushRetryTimerId = null;
+    void flushQueuedRemoteState();
+  }, delay);
+}
+
+async function flushQueuedRemoteState() {
+  if (!gameId.value || isViewerMode.value || typeof window === "undefined") {
+    return;
+  }
+
+  if (!queuedRemoteState || !queuedRemoteStateSignature || isRemotePushInFlight) {
+    return;
+  }
+
+  isRemotePushInFlight = true;
+  const signature = queuedRemoteStateSignature;
+  const statePayload = queuedRemoteState;
+
+  try {
+    const response = await fetchLobbyApi(`/api/games/${gameId.value}/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: statePayload }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`State sync failed with status ${response.status}`);
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    if (queuedRemoteStateSignature === signature) {
+      clearQueuedRemoteState();
+    }
+
+    remotePushRetryAttempt = 0;
+    lastRemoteUpdatedAt = Number(payload?.updatedAt || Date.now());
+    lastPushedStateSignature = signature;
+    updateSyncStatus(true);
+  } catch {
+    remotePushRetryAttempt += 1;
+    updateSyncStatus(false);
+    scheduleQueuedRemotePushRetry();
+  } finally {
+    isRemotePushInFlight = false;
+  }
+}
+
+function handleBrowserOnline() {
+  void flushQueuedRemoteState();
+}
+
+function handleBrowserOffline() {
+  if (pendingSyncCount.value === 0) {
+    updateSyncStatus(false);
+  }
+}
+
 function isLobbyPlayerOptionDisabled(name, currentIndex) {
   return lobbySelectedPlayers.value.some(
     (selectedName, selectedIndex) =>
       selectedIndex !== currentIndex && selectedName === name,
   );
+}
+
+function isLobbyPlayerSelectedDuplicate(index) {
+  const currentName = String(lobbySelectedPlayers.value[index] || "").trim();
+  if (!currentName) {
+    return false;
+  }
+
+  return lobbySelectedPlayers.value.some((name, selectedIndex) => {
+    return (
+      selectedIndex !== index &&
+      String(name || "").trim() === currentName
+    );
+  });
 }
 
 function persistLobbyPlayers() {
@@ -617,27 +930,16 @@ function resolveLobbyPlayersForStart() {
   const requiredPlayerCount = lobbyPlayerCount.value;
   const defaults = lobbyDefaultPlayerNames.value;
 
-  if (filledNames.length === 0) {
-    if (!lobbyAdminCodeValid.value) {
-      return [...defaults];
-    }
-
-    const shouldUseDefaults = window.confirm(
-      `Er zijn nog geen spelersnamen gekozen. Wil je ${defaults.join(", ")} gebruiken?`,
-    );
-
-    if (!shouldUseDefaults) {
-      lobbySelectionError.value = `Game starten geannuleerd. Kies ${requiredPlayerCount} spelers om verder te gaan.`;
-      return null;
-    }
-
+  if (!lobbyAdminCodeValid.value && filledNames.length === 0) {
     return [...defaults];
+  }
+
+  if (lobbySelectionError.value) {
+    return null;
   }
 
   const uniqueSelected = [...new Set(filledNames)];
   if (uniqueSelected.length !== requiredPlayerCount) {
-    lobbySelectionError.value =
-      `Kies ${requiredPlayerCount} verschillende spelers om de game te starten.`;
     return null;
   }
 
@@ -698,8 +1000,6 @@ async function goToGame(viewerMode) {
     }
     return;
   }
-
-  lobbySelectionError.value = "";
 
   if (!viewerMode) {
     clearScoreHistory();
@@ -853,23 +1153,23 @@ async function pullRemoteState() {
       cache: "no-store",
     });
     if (!response.ok) {
-      syncStatus.value = "Lokaal";
+      updateSyncStatus(false);
       return;
     }
 
     const payload = await response.json();
     const updatedAt = Number(payload?.updatedAt || 0);
     if (updatedAt <= lastRemoteUpdatedAt || !payload?.state) {
-      syncStatus.value = "Online";
+      updateSyncStatus(true);
       return;
     }
 
     if (applyState(payload.state)) {
       lastRemoteUpdatedAt = updatedAt;
-      syncStatus.value = "Online";
+      updateSyncStatus(true);
     }
   } catch (error) {
-    syncStatus.value = "Lokaal";
+    updateSyncStatus(false);
   }
 }
 
@@ -878,31 +1178,8 @@ async function pushRemoteState() {
     return;
   }
 
-  const statePayload = serializableState();
-  const stateSignature = JSON.stringify(statePayload);
-  if (stateSignature === lastPushedStateSignature) {
-    return;
-  }
-
-  try {
-    const response = await fetchLobbyApi(`/api/games/${gameId.value}/state`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ state: statePayload }),
-    });
-
-    if (!response.ok) {
-      syncStatus.value = "Lokaal";
-      return;
-    }
-
-    const payload = await response.json();
-    lastRemoteUpdatedAt = Number(payload?.updatedAt || Date.now());
-    lastPushedStateSignature = stateSignature;
-    syncStatus.value = "Online";
-  } catch (error) {
-    syncStatus.value = "Lokaal";
-  }
+  queueRemoteState(serializableState());
+  await flushQueuedRemoteState();
 }
 
 function scheduleRemotePush() {
@@ -998,7 +1275,6 @@ watch(shareViewerUrl, () => {
 watch(
   lobbySelectedPlayers,
   () => {
-    lobbySelectionError.value = "";
     persistLobbyPlayers();
   },
   { deep: true },
@@ -1012,7 +1288,6 @@ watch(lobbyVariantKey, (value) => {
   }
 
   resizeLobbyPlayersForVariant(normalized);
-  lobbySelectionError.value = "";
   persistLobbyVariant();
   persistLobbyPlayers();
 });
@@ -1078,6 +1353,13 @@ onMounted(async () => {
 
   await updateViewerQrCode();
 
+  restoreQueuedRemoteState();
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("online", handleBrowserOnline);
+    window.addEventListener("offline", handleBrowserOffline);
+  }
+
   if (!isViewerMode.value) {
     hostClientId.value = getOrCreateHostClientId();
     const hostClaim = await claimHostLock();
@@ -1105,6 +1387,11 @@ onBeforeUnmount(() => {
     clearTimeout(syncPushTimeoutId);
   }
 
+  if (remotePushRetryTimerId) {
+    clearTimeout(remotePushRetryTimerId);
+    remotePushRetryTimerId = null;
+  }
+
   if (lobbyAdminValidationTimeoutId) {
     clearTimeout(lobbyAdminValidationTimeoutId);
     lobbyAdminValidationTimeoutId = null;
@@ -1120,6 +1407,11 @@ onBeforeUnmount(() => {
   if (toastTimerId) {
     clearTimeout(toastTimerId);
     toastTimerId = null;
+  }
+
+  if (typeof window !== "undefined") {
+    window.removeEventListener("online", handleBrowserOnline);
+    window.removeEventListener("offline", handleBrowserOffline);
   }
 
   stopRealtimeSync();
@@ -1163,6 +1455,7 @@ const {
   activeCellKey,
   isEditingDisabled,
   onBeforeScoreChange: captureUndoSnapshot,
+  onValidationError: showScoreValidationError,
   maxNegativeChoices: maxNegativeChoicesForGame,
   maxPositiveChoices: maxPositiveChoicesForGame,
 });
@@ -1177,6 +1470,48 @@ const {
       aria-live="polite"
     >
       {{ toastMessage }}
+    </div>
+
+    <div
+      v-if="showScoreHistory && !isViewerMode"
+      class="z-60 fixed inset-0 flex items-center justify-center bg-sky-950/40 px-3"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Scoregeschiedenis"
+      @click.self="closeScoreHistory"
+    >
+      <section class="max-h-[80vh] w-full max-w-xl overflow-hidden rounded-xl border border-sky-300 bg-white shadow-xl">
+        <header class="flex items-center justify-between border-b border-sky-200 bg-sky-50 px-3 py-2">
+          <h2 class="text-sm font-semibold text-sky-900">Scoregeschiedenis</h2>
+          <button
+            type="button"
+            class="rounded border border-sky-300 bg-white px-2 py-0.5 text-xs font-semibold text-sky-800 hover:bg-sky-50"
+            @click="closeScoreHistory"
+          >
+            Sluiten
+          </button>
+        </header>
+
+        <ul class="max-h-[64vh] overflow-y-auto p-2">
+          <li
+            v-for="entry in scoreHistoryEntries"
+            :key="entry.id"
+            class="mb-1 flex items-center justify-between gap-2 rounded border border-sky-200 bg-sky-50/70 px-2 py-1.5 last:mb-0"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-xs font-semibold text-sky-900">{{ entry.label }}</p>
+              <p class="text-[11px] text-sky-700">{{ formatHistoryTimestamp(entry.timestamp) }}</p>
+            </div>
+            <button
+              type="button"
+              class="shrink-0 rounded border border-amber-400 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+              @click="rollbackToHistoryEntry(entry.id)"
+            >
+              Herstel
+            </button>
+          </li>
+        </ul>
+      </section>
     </div>
 
     <LobbyPanel
@@ -1213,6 +1548,7 @@ const {
         lobbyHostCheckLoading,
         lobbyHostLocked,
         isLobbyPlayerOptionDisabled,
+        isLobbyPlayerSelectedDuplicate,
       }"
       :recent-games-state="{
         recentGamesLoading,
@@ -1259,11 +1595,19 @@ const {
           <span v-else>Game</span>
           : <span class="font-bold uppercase">{{ gameId }}</span> |
           <svg
-            v-if="syncStatus === 'Online'"
+            v-if="isSyncOnline"
             class="inline h-4 w-4 text-emerald-600"
             fill="currentColor"
             viewBox="0 0 24 24"
             title="Verbonden">
+            <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z" />
+          </svg>
+          <svg
+            v-else-if="isSyncQueued"
+            class="inline h-4 w-4 text-amber-500"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+            title="In wachtrij">
             <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z" />
           </svg>
           <svg
@@ -1297,6 +1641,14 @@ const {
             <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 15 21 9m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3" />
             </svg>
+          </button>
+          <button
+            type="button"
+            class="rounded border border-sky-300 bg-white px-2 py-0.5 text-[12px] font-semibold text-sky-800 hover:bg-sky-50"
+            :disabled="!canOpenScoreHistory()"
+            title="Open scoregeschiedenis"
+            @click="openScoreHistory">
+            Historie ({{ scoreHistoryEntries.length }})
           </button>
           <button
             type="button"

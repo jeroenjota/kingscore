@@ -24,6 +24,10 @@ const props = defineProps({
     type: Function,
     required: true,
   },
+  isLobbyPlayerSelectedDuplicate: {
+    type: Function,
+    required: true,
+  },
   isPlayerSelectionEnabled: {
     type: Boolean,
     default: false,
@@ -105,7 +109,14 @@ function updateLobbyPlayerAt(index, value) {
             </span>
             <select
               :value="props.lobbySelectedPlayers[index]"
-              class="rounded border border-sky-300 bg-white px-1 py-1 text-xs text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
+              class="rounded border px-1 py-1 text-xs text-sky-950 outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-300/70"
+              :class="[
+                props.isLobbyPlayerSelectedDuplicate(index)
+                  ? 'border-rose-500 bg-rose-50'
+                  : props.isPlayerSelectionEnabled && !props.lobbySelectedPlayers[index]
+                    ? 'border-amber-400 bg-amber-50'
+                    : 'border-sky-300 bg-white',
+              ]"
               @change="updateLobbyPlayerAt(index, $event.target.value)">
               <option value="">Kies speler</option>
               <option
@@ -116,6 +127,11 @@ function updateLobbyPlayerAt(index, value) {
                 {{ name }}
               </option>
             </select>
+            <p
+              v-if="props.isLobbyPlayerSelectedDuplicate(index)"
+              class="text-[11px] font-semibold text-rose-700">
+              Deze speler is al gekozen.
+            </p>
           </div>
         </div>
 
