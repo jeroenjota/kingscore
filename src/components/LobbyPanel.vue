@@ -137,6 +137,7 @@ const emit = defineEmits([
       :lobby-selected-players="props.newGameState.lobbySelectedPlayers"
       :player-name-options="props.playersState.playerNameOptions"
       :is-lobby-player-option-disabled="props.newGameState.isLobbyPlayerOptionDisabled"
+      :is-lobby-player-selected-duplicate="props.newGameState.isLobbyPlayerSelectedDuplicate"
       :is-player-selection-enabled="props.apiState.lobbyAdminCodeValid"
       :lobby-selection-error="props.newGameState.lobbySelectionError"
       :lobby-game-code="props.newGameState.lobbyGameCode"
