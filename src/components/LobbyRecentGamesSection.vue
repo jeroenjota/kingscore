@@ -82,7 +82,7 @@ function deleteSelectedSavedGame() {
 <template>
   <div class="mt-4 rounded-lg border border-sky-200 bg-white/80 p-2">
     <div class="flex items-center justify-between gap-2">
-      <p class="text-lg font-semibold text-sky-900">Reeds gespeeld</p>
+      <p class="text-lg font-semibold text-sky-900">Opgeslagen spellen</p>
     </div>
     <p v-if="props.recentGamesLoading" class="text-xs text-sky-700">
       Games laden...

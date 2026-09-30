@@ -49,8 +49,8 @@ const threePlayerNegativeRules = [
         <h2 class="text-normal font-semibold text-sky-900">Spelregels</h2>
         <p class="text-sm">In de lobby kies je tussen een variant met 4 of 3 spelers.</p>
         <ul class="mt-2 list-disc space-y-1 pl-3 text-sm">
-        <li>4 spelers: 12 negatieve rondes (6 spellen x 2) + 8 troefrondes.</li>
-        <li>3 spelers: 12 negatieve rondes (6 spellen x 2) + 9 troefrondes.</li>
+        <li>4 spelers: 52 kaarten, 12 negatieve rondes (6 spellen x 2) + 8 troefrondes.</li>
+        <li>3 spelers: 51 kaarten (&clubs; 2 eruit), 12 negatieve rondes (6 spellen x 2) + 9 troefrondes.</li>
         <li>Keuzes per speler: 4 spelers kiest 3x negatief en 2x positief; 3 spelers kiest 4x negatief en 3x positief.</li>
         <li>De punten zijn zo verdeeld dat aan het eind van het spel de totale score precies 0 is.</li>
         <li>Spelers met een positieve score ontvangen van de spelers met een negatieve score een vooraf afgesproken beloning (de eer, een drankje, geld, etc.). </li>
@@ -64,12 +64,14 @@ const threePlayerNegativeRules = [
           <li>Klik op "Start als Gastheer".</li>
           <li>De gastheer vult als enige de scores in.</li>
           <li>In het score scherm is een knop voor een QR-code</li>
-          <li>De andere spelers (of gasten) kunnen met behulp van de link in de QR-code de scores op hun eigen telefoon zien.</li>
+          <li>De andere spelers (of toeschouwers) kunnen met behulp van de link in de QR-code het scorescherm op hun eigen telefoon openen.</li>
         </ol>
        <h2 class="mt-2 text-lg font-semibold text-sky-900">Scores invullen</h2>
         <ul class="list-disc space-y-1 pl-5 text-sm text-sky-900">
-          <li>Check onder de naam van de speler de betreffende spelkeuze, de mogelijke keuzes zijn lichtgeel gemarkeerd.</li>
+          <li>De speler met de hoogste kaart deelt. De volgende speler kiest het speltype voor de ronde.</li>
+          <li>Vink onder de naam van de speler de betreffende spelkeuze aan, de mogelijke keuzes zijn lichtgeel gemarkeerd.</li>
           <li>Na afloop van de ronde vult de gastheer voor elke speler de scores in, mbv de keuzelijst (als alles is ingevuld, wordt de regel lichtgroen)</li>
+          <li>Nadat alle scores zijn ingevoerd, worden de mogelijke keuzes van de volgende speler weergegeven in lichtgeel.</li>
           <li>De app houdt bij wat er al gekozen is en berekent punten automatisch.</li>
         </ul>
       </article>
